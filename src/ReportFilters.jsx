@@ -1,0 +1,5 @@
+import React from 'react';
+export default function ReportFilters({report,blocks,onChange}){
+  const filters=blocks.filter(b=>b.type==='filter'&&b.filter?.tableId===report.tableId),selected=report.respondToFilters??filters.filter(b=>b.filter?.applyToReports===true).map(b=>b.id),all=selected==='all';
+  return <div className="report-filter-settings"><h3>Respond to filters</h3>{report.sourceType==='kanban'||!filters.length?<p className="property-hint">Add a Filter block linked to this report’s source table to configure responses.</p>:<><label><input type="checkbox" checked={all} onChange={e=>onChange(e.target.checked?'all':[])}/> Select all filters</label>{filters.map(f=><label key={f.id}><input type="checkbox" checked={all||selected.includes(f.id)} onChange={e=>{const ids=all?filters.map(f=>f.id):selected;onChange(e.target.checked?[...new Set([...ids,f.id])]:ids.filter(id=>id!==f.id))}}/>{f.name}</label>)}<button className="text-button" onClick={()=>onChange([])}>Clear selection</button><p className="property-hint">Only selected filters affect this report. Select all also includes future filters linked to the same table.</p></>}</div>;
+}

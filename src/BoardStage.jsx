@@ -3,7 +3,7 @@ import { Icon, IconButton, typeIcons } from "./ui";
 import RichText, { SafeHTML } from "./RichText";
 import Report from "./Report";
 import {CellInput} from "./TableControls";
-import {filterTableByBlocks} from "./tableFeatures";
+import {filterTableByBlocks,reportBlocksFor} from "./tableFeatures";
 import FilterBlock from "./FilterBlock";
 import { TabsBlock, ImageBlock, KanbanBlock } from "./ExtendedBlocks";
 import {
@@ -221,9 +221,8 @@ export default function BoardStage({
   children,
   stageRef,
 }) {
-  const [localFilters,setLocalFilters]=useState({});
+  const [localFilters,setLocalFilters]=useState({}),[dragging,setDragging]=useState(false);
   const filters=tableFilters||localFilters,setFilters=onTableFilters||setLocalFilters;
-  const reportBlocks=board.blocks.map(b=>b.type==='table'?{...b,table:{...b.table,rows:filterTableByBlocks(b,board.blocks,filters,true).map(x=>x.row)}}:b);
   const shown = viewBlocks(
     board,
     viewId || board.startViewId || projectViews(board)[0].id,
@@ -306,14 +305,16 @@ export default function BoardStage({
     const hit=board.blocks.find(b=>b.id===id);
     if(hit?.type==='button'&&!readOnly&&(e.ctrlKey||e.metaKey))return;
     if (id && !readOnly) onSelect?.(id);
-    if(hit?.type==='button'&&!readOnly&&tool!=='pan'&&!e.target.closest('.resize-handle')){if(blockIsLocked(board,hit,viewId))return;e.preventDefault();onBegin?.();drag.current={kind:'block',id,x:e.clientX,y:e.clientY,bx:hit.x,by:hit.y,w:hit.w,h:hit.h,z:view.z*interactionScale,type:'button'};e.currentTarget.setPointerCapture(e.pointerId);return;}
+    if(hit?.type==='button'&&!readOnly&&tool!=='pan'&&!e.target.closest('.resize-handle')){if(blockIsLocked(board,hit,viewId))return;e.preventDefault();setDragging(true);onBegin?.();drag.current={kind:'block',id,x:e.clientX,y:e.clientY,bx:hit.x,by:hit.y,w:hit.w,h:hit.h,z:view.z*interactionScale,type:'button'};e.currentTarget.setPointerCapture(e.pointerId);return;}
     if (
       e.target.closest(
         'button,input,textarea,select,a,[contenteditable="true"]',
       ) &&
-      !e.target.closest(".resize-handle")
+      tool!=="pan" && !e.target.closest(".resize-handle")
     )
       return;
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
     if (id && !readOnly && tool !== "pan") {
       if (
         !e.target.closest(".block-drag") &&
@@ -344,6 +345,7 @@ export default function BoardStage({
       };
       if (!id) onSelect?.(null);
     }
+    setDragging(true);
     e.currentTarget.setPointerCapture(e.pointerId);
   };
   const pointerMove = (e) => {
@@ -399,18 +401,21 @@ export default function BoardStage({
         }
       }}
       ref={root}
-      className={`board-stage tool-${tool} ${readOnly ? "readonly" : ""} ${embedded ? "embedded-stage" : ""}`}
+      className={`board-stage ${dragging?"stage-dragging":""} tool-${tool} ${readOnly ? "readonly" : ""} ${embedded ? "embedded-stage" : ""}`}
       aria-label={readOnly ? "Read-only presentation canvas" : "Project canvas"}
       style={{
         backgroundSize: `${22 * view.z}px ${22 * view.z}px`,
         backgroundPosition: `${view.x}px ${view.y}px`,
       }}
+      onPointerDownCapture={e=>{if(tool==='pan'&&!e.target.closest('.canvas-controls,.canvas-overlay')){pointerDown(e);e.stopPropagation();}}}
+      onClickCapture={e=>{if(tool==='pan'&&!e.target.closest('.canvas-controls,.canvas-overlay')){e.preventDefault();e.stopPropagation();}}}
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
       onPointerUp={() => {
-        drag.current = null;
+        drag.current = null;setDragging(false);
       }}
-      onPointerCancel={() => (drag.current = null)}
+      onPointerCancel={() => {drag.current=null;setDragging(false);}}
+      onLostPointerCapture={()=>{drag.current=null;setDragging(false);}}
     >
       <div
         className="canvas-world"
@@ -575,7 +580,7 @@ export default function BoardStage({
                 ) : block.type === "filter" ? (
                   <FilterBlock block={block} blocks={board.blocks} value={filters[block.id]||{}} onChange={value=>setFilters(previous=>({...previous,[block.id]:value}))}/>
                 ) : block.type === "report" ? (
-                  <Report block={block} blocks={reportBlocks} />
+                  <Report block={block} blocks={reportBlocksFor(block.report,board.blocks,filters)} />
                 ) : block.type === "button" ? (
                   <div
                     className="button-block-content"

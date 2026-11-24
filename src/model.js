@@ -111,8 +111,9 @@ export function newBlock(type, x = 100, y = 100) {
       labelColumn: "",
       valueColumn: "",
       bins: 6,
+      respondToFilters: [],
     };
-  if(type==='filter'){b.w=320;b.h=175;b.filter={tableId:'',columnId:'',mode:'text',applyToReports:false,label:''};}
+  if(type==='filter'){b.w=320;b.h=175;b.filter={tableId:'',columnId:'',mode:'text',label:''};}
   if (type === "image") {
     b.name = "Image";
     b.image = { src: "", alt: "", fit: "contain" };
@@ -283,6 +284,7 @@ export function duplicateBlock(board, id) {
       }
       if (map.has(b.parentId)) c.parentId = map.get(b.parentId);
       if (map.has(b.tabParentId)) c.tabParentId = map.get(b.tabParentId);
+      if(Array.isArray(c.report?.respondToFilters))c.report.respondToFilters=c.report.respondToFilters.map(id=>map.get(id)||id);
       if(c.filter?.tableId&&map.has(c.filter.tableId))c.filter.tableId=map.get(c.filter.tableId);
       if (c.report?.tableId && map.has(c.report.tableId))
         c.report.tableId = map.get(c.report.tableId);
@@ -731,6 +733,7 @@ function cloneIntoView(board, ids, rootIds, targetViewId) {
         if (map.has(b.parentId)) c.parentId = map.get(b.parentId);
         if (map.has(b.tabParentId)) c.tabParentId = map.get(b.tabParentId);
       }
+      if(Array.isArray(c.report?.respondToFilters))c.report.respondToFilters=c.report.respondToFilters.map(id=>map.get(id)||id);
       if(c.filter?.tableId&&map.has(c.filter.tableId))c.filter.tableId=map.get(c.filter.tableId);
       if (c.report?.tableId && map.has(c.report.tableId))
         c.report.tableId = map.get(c.report.tableId);

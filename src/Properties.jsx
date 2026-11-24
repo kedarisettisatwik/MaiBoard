@@ -1,6 +1,7 @@
 import { ExtraProperties } from "./ExtendedBlocks";
 import { chartColor, chartPalettes } from './chartColors';
 import {cardMetrics} from './analytics';
+import ReportFilters from "./ReportFilters";
 import {ColumnSettings} from './TableControls';
 import React, { useState,useEffect } from "react";
 import { Icon, IconButton, Field, typeIcons } from "./ui";
@@ -350,7 +351,7 @@ export default function Properties({
                 </label>
               </section>
             )}
-            {block.type==='filter'&&<section className="property-section" inert={locked?true:undefined}><h3>Filter configuration</h3><Field label="Source table"><select value={block.filter?.tableId||''} onChange={e=>{const t=board.blocks.find(b=>b.id===e.target.value);update({filter:{...block.filter,tableId:e.target.value,columnId:t?.table.columns[0]?.id||''}})}}><option value="">Select a table</option>{board.blocks.filter(b=>b.type==='table').map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></Field><Field label="Filter column"><select value={block.filter?.columnId||''} onChange={e=>update({filter:{...block.filter,columnId:e.target.value}})}><option value="">Select a column</option>{board.blocks.find(b=>b.id===block.filter?.tableId)?.table.columns.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Filter control"><select value={block.filter?.mode||'text'} onChange={e=>update({filter:{...block.filter,mode:e.target.value}})}><option value="text">Text search</option><option value="dropdown">Dropdown</option><option value="date">Date range</option></select></Field><Field label="Filter label"><input value={block.filter?.label||''} onChange={e=>update({filter:{...block.filter,label:e.target.value}})}/></Field><label><input type="checkbox" checked={block.filter?.applyToReports===true} onChange={e=>update({filter:{...block.filter,applyToReports:e.target.checked}})}/> Apply to reports</label><p className="property-hint">Filters the linked table. Enable Apply to reports to update its charts and report cards too. Multiple filters combine.</p></section>}
+            {block.type==='filter'&&<section className="property-section" inert={locked?true:undefined}><h3>Filter configuration</h3><Field label="Source table"><select value={block.filter?.tableId||''} onChange={e=>{const t=board.blocks.find(b=>b.id===e.target.value);update({filter:{...block.filter,tableId:e.target.value,columnId:t?.table.columns[0]?.id||''}})}}><option value="">Select a table</option>{board.blocks.filter(b=>b.type==='table').map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></Field><Field label="Filter column"><select value={block.filter?.columnId||''} onChange={e=>update({filter:{...block.filter,columnId:e.target.value}})}><option value="">Select a column</option>{board.blocks.find(b=>b.id===block.filter?.tableId)?.table.columns.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><Field label="Filter control"><select value={block.filter?.mode||'text'} onChange={e=>update({filter:{...block.filter,mode:e.target.value}})}><option value="text">Text search</option><option value="dropdown">Dropdown</option><option value="date">Date range</option></select></Field><Field label="Filter caption (optional)"><input value={block.filter?.label||''} onChange={e=>update({filter:{...block.filter,label:e.target.value}})}/></Field><label><input type="checkbox" checked={block.filter?.showClear===true} onChange={e=>update({filter:{...block.filter,showClear:e.target.checked}})}/> Show clear button</label><p className="property-hint">Filters the linked table. Select which filters each report responds to in that report’s Properties.</p></section>}
             {block.type === "table" && (
               <section className="property-section">
                 <h3>Table data</h3>
@@ -612,6 +613,7 @@ export default function Properties({
                   </select>
                 </Field>
                 {block.report.kind!=='card'&&block.report.sourceType!=='kanban'&&<Field label="Aggregation"><select value={block.report.aggregation||'sum'} onChange={e=>update({report:{...block.report,aggregation:e.target.value}})}><option value="sum">Sum values</option><option value="count">Count records by label</option></select></Field>}
+                <ReportFilters report={block.report} blocks={board.blocks} onChange={respondToFilters=>update({report:{...block.report,respondToFilters}})}/>
                 <Field label="Chart type">
                   <select
                     value={block.report.kind}
