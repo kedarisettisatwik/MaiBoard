@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { IconButton, Modal, Field } from "./ui";
-import { uid, projectViews } from "./model";
+import { uid, projectViews, copyView } from "./model";
 import { presentationTabs } from "./model";
 export function PresentationTabs({ board, current, onSelect }) {
   const tabs = presentationTabs(board);
@@ -25,8 +25,10 @@ export function PresentationTabs({ board, current, onSelect }) {
 }
 export default function Views({ board, current, onSelect, change }) {
   const [editing, setEditing] = useState(null),
-    [name, setName] = useState("");
-  const views = projectViews(board);
+    [name, setName] = useState(""),
+    [newViewSource, setNewViewSource] = useState("");
+  const views = projectViews(board),
+    locked = !!views.find((v) => v.id === current)?.locked;
   return (
     <div className="view-controls">
       <select
@@ -41,16 +43,31 @@ export default function Views({ board, current, onSelect, change }) {
         ))}
       </select>
       <IconButton
+        icon={locked ? "Lock" : "Unlock"}
+        title={locked ? "Unlock current view" : "Lock current view"}
+        active={locked}
+        onClick={() =>
+          change((b) => ({
+            ...b,
+            views: projectViews(b).map((v) =>
+              v.id === current ? { ...v, locked: !locked } : v,
+            ),
+          }))
+        }
+      />
+      <IconButton
         icon="Plus"
         title="Add view"
         onClick={() => {
           setName(`View ${views.length + 1}`);
+          setNewViewSource("");
           setEditing("new");
         }}
       />
       <IconButton
         icon="Settings2"
         title="Rename view"
+        disabled={locked}
         onClick={() => {
           setName(views.find((v) => v.id === current)?.name || "");
           setEditing(current);
@@ -59,7 +76,7 @@ export default function Views({ board, current, onSelect, change }) {
       <IconButton
         icon="Trash2"
         title="Delete view and move blocks to another view"
-        disabled={views.length < 2}
+        disabled={views.length < 2 || locked}
         onClick={() => {
           const remaining = views.filter((v) => v.id !== current),
             next = remaining[0].id;
@@ -104,15 +121,19 @@ export default function Views({ board, current, onSelect, change }) {
               e.preventDefault();
               if (!name.trim()) return;
               const id = editing === "new" ? uid() : editing;
-              change((b) => ({
-                ...b,
-                views:
-                  editing === "new"
-                    ? [...projectViews(b), { id, name: name.trim() }]
-                    : projectViews(b).map((v) =>
-                        v.id === id ? { ...v, name: name.trim() } : v,
-                      ),
-              }));
+              change((b) =>
+                editing === "new" && newViewSource
+                  ? copyView(b, newViewSource, { id, name: name.trim() })
+                  : {
+                      ...b,
+                      views:
+                        editing === "new"
+                          ? [...projectViews(b), { id, name: name.trim() }]
+                          : projectViews(b).map((v) =>
+                              v.id === id ? { ...v, name: name.trim() } : v,
+                            ),
+                    },
+              );
               onSelect(id);
               setEditing(null);
             }}
@@ -125,6 +146,21 @@ export default function Views({ board, current, onSelect, change }) {
                 onChange={(e) => setName(e.target.value)}
               />
             </Field>
+            {editing === "new" && (
+              <Field label="New view content">
+                <select
+                  value={newViewSource}
+                  onChange={(e) => setNewViewSource(e.target.value)}
+                >
+                  <option value="">Start with a blank view</option>
+                  {views.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      Copy {v.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
             <button className="btn primary full">Save view</button>
           </form>
         </Modal>

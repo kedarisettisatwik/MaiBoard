@@ -10,6 +10,8 @@ import {
   isBlockVisible,
   viewBlocks,
   projectViews,
+  blockIsLocked,
+  viewIsLocked,
   presentationTabs,
   presentationTabSource,
 } from "./model";
@@ -30,7 +32,7 @@ export function edgePath(edge, blocks) {
     ? `M${x1},${y1} L${x2},${y2}`
     : `M${x1},${y1} C${x1 + d},${y1} ${x2 - d},${y2} ${x2},${y2}`;
 }
-function TableBlock({ block, readOnly, update, onImport }) {
+function TableBlock({ block, readOnly, update, onImport, onAddLiveRow }) {
   const { columns, rows } = block.table;
   return (
     <>
@@ -131,6 +133,7 @@ function TableBlock({ block, readOnly, update, onImport }) {
         <span>
           {rows.length} rows · {columns.length} columns
         </span>
+        {readOnly && onAddLiveRow && <button onClick={()=>onAddLiveRow(block.id)}><Icon name="Plus" size={13}/> Add row</button>}
         {!readOnly && (
           <>
             <button
@@ -177,7 +180,7 @@ function TableBlock({ block, readOnly, update, onImport }) {
   );
 }
 function TabCanvas({ board, block, tab, referenceViewId, props }) {
-  const [innerView, setInnerView] = useState({ x: 15, y: 15, z: 1 });
+  const [innerView, setInnerView] = useState({ x: 0, y: 0, z: 1 });
   const readonly = props.readOnly || !!referenceViewId;
   const chain = [...(props.excludeIds || []), block.id];
   return (
@@ -217,7 +220,9 @@ export default function BoardStage({
   onConnect,
   onEditor,
   onImport,
+  onAddLiveRow,
   onDuplicate,
+  onTransfer,
   onUploadImage,
   onAddToTab,
   onTabNavigate,
@@ -311,7 +316,10 @@ export default function BoardStage({
       onSelect?.(edgeEl.dataset.edge);
       return;
     }
+    const hit=board.blocks.find(b=>b.id===id);
+    if(hit?.type==='button'&&!readOnly&&(e.ctrlKey||e.metaKey))return;
     if (id && !readOnly) onSelect?.(id);
+    if(hit?.type==='button'&&!readOnly&&tool!=='pan'&&!e.target.closest('.resize-handle')){if(blockIsLocked(board,hit,viewId))return;e.preventDefault();onBegin?.();drag.current={kind:'block',id,x:e.clientX,y:e.clientY,bx:hit.x,by:hit.y,w:hit.w,h:hit.h,z:view.z*interactionScale,type:'button'};e.currentTarget.setPointerCapture(e.pointerId);return;}
     if (
       e.target.closest(
         'button,input,textarea,select,a,[contenteditable="true"]',
@@ -326,9 +334,10 @@ export default function BoardStage({
       )
         return;
       const b = board.blocks.find((b) => b.id === id);
+      if (blockIsLocked(board, b, viewId)) return;
       onBegin?.();
       drag.current = {
-        kind: e.target.closest(".resize-handle") ? "resize" : "block",
+        kind: e.target.closest(".resize-handle") ? "resize" : "block",type:b.type,
         id,
         x: e.clientX,
         y: e.clientY,
@@ -360,8 +369,8 @@ export default function BoardStage({
       onUpdate?.(
         d.id,
         {
-          w: Math.max(260, Math.round(d.w + x / d.z)),
-          h: Math.max(160, Math.round(d.h + y / d.z)),
+          w: Math.max(d.type==="button"?80:260, Math.round(d.w + x / d.z)),
+          h: Math.max(d.type==="button"?44:160, Math.round(d.h + y / d.z)),
         },
         false,
       );
@@ -379,14 +388,26 @@ export default function BoardStage({
     <section
       onContextMenu={(e) => {
         if (embedded) e.stopPropagation();
+        const edge = e.target.closest("[data-edge]");
         const b = e.target.closest("[data-block]");
+        if (!readOnly && edge) {
+          e.preventDefault();
+          onSelect?.(edge.dataset.edge);
+          setContext({
+            id: edge.dataset.edge,
+            kind: "edge",
+            x: Math.min(e.clientX, innerWidth - 190),
+            y: Math.min(e.clientY, innerHeight - 100),
+          });
+          return;
+        }
         if (!readOnly && b) {
           e.preventDefault();
           onSelect?.(b.dataset.block);
           setContext({
             id: b.dataset.block,
             x: Math.min(e.clientX, innerWidth - 190),
-            y: Math.min(e.clientY, innerHeight - 110),
+            y: Math.min(e.clientY, innerHeight - 205),
           });
         }
       }}
@@ -400,26 +421,6 @@ export default function BoardStage({
       onPointerDown={pointerDown}
       onPointerMove={pointerMove}
       onPointerUp={() => {
-        const d = drag.current;
-        if (d?.kind === "block") {
-          const b = board.blocks.find((b) => b.id === d.id);
-          if (b && b.type !== "section") {
-            const parent = board.blocks
-              .filter(
-                (s) =>
-                  s.type === "section" &&
-                  s.tabParentId === b.tabParentId &&
-                  s.tabId === b.tabId &&
-                  !s.hidden &&
-                  b.x + b.w / 2 > s.x &&
-                  b.x + b.w / 2 < s.x + s.w &&
-                  b.y + blockHeight(b) / 2 > s.y + 43 &&
-                  b.y + blockHeight(b) / 2 < s.y + blockHeight(s),
-              )
-              .at(-1);
-            onUpdate?.(b.id, { parentId: parent?.id || "" }, false);
-          }
-        }
         drag.current = null;
       }}
       onPointerCancel={() => (drag.current = null)}
@@ -508,6 +509,8 @@ export default function BoardStage({
               (a.type === "section" ? 0 : 1) - (b.type === "section" ? 0 : 1),
           )
           .map((block) => {
+            const locked = blockIsLocked(board, block, viewId),
+              contentReadOnly = readOnly || locked;
             const s = { ...defaultStyle, ...block.style },
               active = selected === block.id,
               tabId = readOnly
@@ -519,7 +522,7 @@ export default function BoardStage({
               <article
                 data-block={block.id}
                 key={block.id}
-                className={`canvas-block type-${block.type} ${active && !readOnly ? "selected" : ""}`}
+                className={`canvas-block type-${block.type} ${locked ? "locked-block" : ""} ${active && !readOnly ? "selected" : ""}`}
                 style={{
                   left: block.x,
                   top: block.y,
@@ -535,7 +538,7 @@ export default function BoardStage({
                   fontSize: s.fontSize,
                 }}
               >
-                <div className="block-drag">
+                {block.type!=="button"&&<div className="block-drag">
                   <span className="block-type-icon">
                     <Icon name={typeIcons[block.type]} size={15} />
                   </span>
@@ -544,6 +547,7 @@ export default function BoardStage({
                   ) : (
                     <input
                       className="block-name-editor"
+                      disabled={locked}
                       aria-label={
                         block.type === "table"
                           ? "Table name"
@@ -556,34 +560,40 @@ export default function BoardStage({
                     />
                   )}
                   {!readOnly && (
+                    <IconButton
+                      icon={locked ? "Lock" : "Unlock"}
+                      title={`${block.locked ? "Unlock" : "Lock"} block ${block.name}`}
+                      disabled={viewIsLocked(board, viewId)}
+                      active={locked}
+                      onClick={() =>
+                        onUpdate?.(block.id, { locked: !block.locked })
+                      }
+                    />
+                  )}
+                  {!readOnly && (
                     <span className="drag-grip">
                       <Icon name="GripVertical" size={14} />
                     </span>
                   )}
-                </div>
+                </div>}
                 {block.type === "table" ? (
                   <TableBlock
                     block={block}
                     readOnly={readOnly}
                     update={update}
                     onImport={onImport}
+                    onAddLiveRow={onAddLiveRow}
                   />
                 ) : block.type === "report" ? (
                   <Report block={block} blocks={board.blocks} />
                 ) : block.type === "button" ? (
                   <div
                     className="button-block-content"
-                    style={{ padding: s.padding }}
+                    style={{ padding: 0 }}
                   >
                     <a
                       className="board-link-button"
-                      href={
-                        readOnly
-                          ? ["view", "next", "tab"].includes(block.link.action)
-                            ? "#"
-                            : safeUrl(block.link.url) || undefined
-                          : undefined
-                      }
+                      href={["view","next","tab"].includes(block.link.action)?'#':safeUrl(block.link.url)||undefined}
                       target={
                         !["view", "next", "tab"].includes(block.link.action) &&
                         block.link.newTab
@@ -592,8 +602,8 @@ export default function BoardStage({
                       }
                       rel="noopener noreferrer"
                       onClick={(e) => {
-                        if (!readOnly) e.preventDefault();
-                        else if (block.link.action === "tab") {
+                        if (!readOnly&&!e.ctrlKey&&!e.metaKey){e.preventDefault();return;}
+                        if (block.link.action === "tab") {
                           e.preventDefault();
                           onTabNavigate?.(
                             block.link.targetTabBlockId,
@@ -616,22 +626,20 @@ export default function BoardStage({
                         }
                       }}
                       style={{
-                        background: s.color,
-                        color: s.background,
-                        borderRadius: Math.max(0, s.radius - 4),
+                        background: s.background,
+                        color: s.color,
+                        borderRadius: s.radius,
                       }}
                     >
                       {block.link.label}
                       <Icon name="ExternalLink" size={16} />
                     </a>
-                    {!readOnly && (
-                      <small>Link opens in presentation mode</small>
-                    )}
+
                   </div>
                 ) : block.type === "tabs" ? (
                   <TabsBlock
                     block={block}
-                    readOnly={readOnly}
+                    readOnly={contentReadOnly}
                     update={update}
                     active={active}
                     onEditor={onEditor}
@@ -655,9 +663,11 @@ export default function BoardStage({
                           onBegin,
                           onDelete,
                           onDuplicate,
+                          onTransfer,
                           onConnect,
                           onEditor,
                           onImport,
+                          onAddLiveRow,
                           onUploadImage,
                           onAddToTab,
                           onNavigate,
@@ -674,21 +684,21 @@ export default function BoardStage({
                 ) : block.type === "image" ? (
                   <ImageBlock
                     block={block}
-                    readOnly={readOnly}
+                    readOnly={contentReadOnly}
                     update={update}
                     onUpload={onUploadImage}
                   />
                 ) : block.type === "kanban" ? (
                   <KanbanBlock
                     block={block}
-                    readOnly={readOnly}
+                    readOnly={contentReadOnly}
                     update={update}
                   />
                 ) : block.type === "section" ? (
                   <div className="section-interior" />
                 ) : (
                   <div className="block-content" style={{ padding: s.padding }}>
-                    {readOnly ? (
+                    {contentReadOnly ? (
                       <SafeHTML html={block.html} />
                     ) : (
                       <RichText
@@ -700,7 +710,7 @@ export default function BoardStage({
                     )}
                   </div>
                 )}
-                {active && !readOnly && (
+                {active && !readOnly && !locked && (
                   <button
                     className="resize-handle"
                     title="Drag to resize block"
@@ -719,18 +729,61 @@ export default function BoardStage({
           style={{ position: "fixed", left: context.x, top: context.y }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <button
-            role="menuitem"
-            onClick={() => {
-              onDuplicate?.(context.id);
-              setContext(null);
-            }}
-          >
-            <Icon name="Copy" size={16} /> Duplicate
-          </button>
+          {context.kind !== "edge" && (
+            <button
+              role="menuitem"
+              disabled={viewIsLocked(board, viewId)}
+              onClick={() => {
+                onDuplicate?.(context.id);
+                setContext(null);
+              }}
+            >
+              <Icon name="Copy" size={16} /> Duplicate
+            </button>
+          )}
+          {context.kind !== "edge" && (
+            <>
+              <button
+                role="menuitem"
+                disabled={projectViews(board).length < 2}
+                onClick={() => {
+                  onTransfer?.(context.id, "copy");
+                  setContext(null);
+                }}
+              >
+                <Icon name="Copy" size={16} /> Copy to view
+              </button>
+              <button
+                role="menuitem"
+                disabled={
+                  projectViews(board).length < 2 ||
+                  blockIsLocked(
+                    board,
+                    board.blocks.find((b) => b.id === context.id),
+                    viewId,
+                  )
+                }
+                onClick={() => {
+                  onTransfer?.(context.id, "move");
+                  setContext(null);
+                }}
+              >
+                <Icon name="Layers" size={16} /> Move to view
+              </button>
+            </>
+          )}
           <button
             role="menuitem"
             className="context-delete"
+            disabled={
+              context.kind === "edge"
+                ? viewIsLocked(board, viewId)
+                : blockIsLocked(
+                    board,
+                    board.blocks.find((b) => b.id === context.id),
+                    viewId,
+                  )
+            }
             onClick={() => {
               onDelete?.(context.id);
               setContext(null);

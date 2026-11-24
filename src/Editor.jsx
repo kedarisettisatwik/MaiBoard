@@ -24,6 +24,11 @@ import {
   relocateLayer,
   projectViews,
   startingView,
+  viewIsLocked,
+  blockIsLocked,
+  canUpdateBlock,
+  transferToView,
+  upgradeBoard,
   viewBlocks,
 } from "./model";
 import {
@@ -92,7 +97,7 @@ export default function Editor({
     loadProject(user.uid, id)
       .then((p) => {
         if (cancelled) return;
-        let b = JSON.parse(p.boardJson);
+        let b = upgradeBoard(JSON.parse(p.boardJson));
         b.groups ||= [];
         b.csvFiles ||= [];
         let draft;
@@ -148,18 +153,23 @@ export default function Editor({
     [checkpoint],
   );
   const updateBlock = useCallback(
-    (blockId, patch, key = true) =>
+    (blockId, patch, key = true) => {
+      const b = boardRef.current,
+        block = b.blocks.find((x) => x.id === blockId);
+      if (!block || !canUpdateBlock(b, block, patch, currentView)) return;
       change(
-        (b) => updateBoardBlock(b, blockId, patch),
+        (p) => updateBoardBlock(p, blockId, patch),
         key === false
           ? false
           : typeof key === "string"
             ? `${blockId}:${key}`
             : true,
-      ),
-    [change],
+      );
+    },
+    [change, currentView],
   );
-  const updateEdge = (edgeId, patch, key = true) =>
+  const updateEdge = (edgeId, patch, key = true) => {
+    if (viewIsLocked(boardRef.current, currentView)) return;
     change(
       (b) => ({
         ...b,
@@ -167,6 +177,7 @@ export default function Editor({
       }),
       typeof key === "string" ? `${edgeId}:${key}` : key,
     );
+  };
   const persist = useCallback(async () => {
     if (demo || !boardRef.current || version.current === savedVersion.current)
       return true;
@@ -231,6 +242,10 @@ export default function Editor({
     [updateBlock],
   );
   const add = (type, tabParentId, tabId) => {
+    if (viewIsLocked(boardRef.current, currentView)) {
+      notify("Unlock this view to add blocks.");
+      return;
+    }
     const r = stageRef.current.getBoundingClientRect(),
       x = Math.max(20, Math.round((r.width / 2 - view.x) / view.z - 170)),
       y = Math.max(40, Math.round((r.height / 2 - view.y) / view.z - 100)),
@@ -253,21 +268,11 @@ export default function Editor({
         : type === "table"
           ? 310
           : type === "button"
-            ? 170
+            ? 48
             : type === "report"
               ? 360
               : 290;
     if (["section", "image", "kanban"].includes(type)) b.h = newBlock(type).h;
-    const parent = boardRef.current.blocks.find(
-      (x) => x.id === selected && x.type === "section",
-    );
-    if (parent && !tabParentId && type !== "section") {
-      b.parentId = parent.id;
-      b.tabParentId = parent.tabParentId || "";
-      b.tabId = parent.tabId || "";
-      b.x = parent.x + 30;
-      b.y = parent.y + 65;
-    }
     if (type === "report") {
       const t = boardRef.current.blocks.find((b) => b.type === "table");
       if (t) {
@@ -310,6 +315,10 @@ export default function Editor({
     setTool("select");
   };
   const connect = (id) => {
+    if (viewIsLocked(boardRef.current, currentView)) {
+      notify("Unlock this view to edit connections.");
+      return;
+    }
     if (!source.current) {
       source.current = id;
       notify("Now select the destination block.");
@@ -341,7 +350,26 @@ export default function Editor({
     setTool("select");
     notify("Blocks connected.");
   };
+  const openTransfer = (blockId, mode) => {
+    const candidates = projectViews(boardRef.current).filter(
+      (v) => v.id !== currentView,
+    );
+    if (!candidates.length) {
+      notify("Create another view first.");
+      return;
+    }
+    setModal({
+      type: "transfer",
+      blockId,
+      mode,
+      targetViewId: candidates[0].id,
+    });
+  };
   const duplicate = (blockId) => {
+    if (viewIsLocked(boardRef.current, currentView)) {
+      notify("Unlock this view to duplicate blocks.");
+      return;
+    }
     const before = boardRef.current,
       source = before.blocks.find((b) => b.id === blockId),
       next = duplicateBlock(before, blockId);
@@ -353,14 +381,26 @@ export default function Editor({
     );
     if (copy) setSelected(copy.id);
   };
-  const removeSelected = () => {
-    if (!selected) return;
+  const removeId = (blockId) => {
+    const b = boardRef.current,
+      block = b.blocks.find((x) => x.id === blockId);
+    if (
+      block
+        ? blockIsLocked(b, block, currentView)
+        : viewIsLocked(b, currentView)
+    ) {
+      notify("Unlock it before deleting.");
+      return;
+    }
     change((b) =>
-      b.blocks.some((x) => x.id === selected)
-        ? deleteBlock(b, selected)
-        : { ...b, edges: b.edges.filter((e) => e.id !== selected) },
+      block
+        ? deleteBlock(b, blockId)
+        : { ...b, edges: b.edges.filter((e) => e.id !== blockId) },
     );
     setSelected(null);
+  };
+  const removeSelected = () => {
+    if (selected) removeId(selected);
   };
   const history = (direction) => {
     const from = direction === "undo" ? undo : redo,
@@ -425,6 +465,16 @@ export default function Editor({
     if (board && version.current === 0) requestAnimationFrame(fit);
   }, [Boolean(board), fit]);
   const requestImport = (blockId) => {
+    if (
+      blockIsLocked(
+        boardRef.current,
+        boardRef.current.blocks.find((b) => b.id === blockId),
+        currentView,
+      )
+    ) {
+      notify("Unlock the table before replacing CSV data.");
+      return;
+    }
     if (demo) {
       notify("Sign in to save CSV files to your Firebase workspace.");
       return;
@@ -620,7 +670,7 @@ export default function Editor({
                   requestAnimationFrame(fit);
                 }}
               >
-                <Icon name="Play" size={16} /> Present
+                <Icon name="Globe" size={16} /> Publish preview
               </button>
               <button
                 className="btn primary"
@@ -669,13 +719,10 @@ export default function Editor({
               <button
                 className="btn"
                 onClick={() => {
-                  setActiveViewId(startingView(board));
-                  setRuntimeTabs({});
-                  setPresent(true);
-                  requestAnimationFrame(fit);
+                  exit(()=>{location.hash=`/live/${id}`});
                 }}
               >
-                <Icon name="Play" size={16} /> Present
+                <Icon name="Lock" size={16} /> Live mode
               </button>
               <button
                 className="btn primary"
@@ -775,9 +822,26 @@ export default function Editor({
             }}
             selected={selected}
             onSelect={select}
-            onMove={(blockId, destination) =>
-              change((b) => relocateLayer(b, blockId, destination))
-            }
+            onMove={(blockId, destination) => {
+              if (
+                !blockIsLocked(
+                  boardRef.current,
+                  boardRef.current.blocks.find((b) => b.id === blockId),
+                  currentView,
+                )
+              )
+                change((b) => relocateLayer(b, blockId, destination));
+            }}
+            currentView={currentView}
+            onDelete={removeId}
+            onCopy={duplicate}
+            onTransfer={openTransfer}
+            onLock={(blockId) => {
+              const block = boardRef.current.blocks.find(
+                (b) => b.id === blockId,
+              );
+              updateBlock(blockId, { locked: !block.locked });
+            }}
             onVisibility={(blockId) => {
               const b = boardRef.current.blocks.find((x) => x.id === blockId);
               updateBlock(blockId, { hidden: !b.hidden });
@@ -827,11 +891,9 @@ export default function Editor({
           onBegin={() => checkpoint()}
           onConnect={connect}
           onImport={requestImport}
-          onDelete={(blockId) => {
-            change((b) => deleteBlock(b, blockId));
-            setSelected(null);
-          }}
+          onDelete={removeId}
           onDuplicate={duplicate}
+          onTransfer={openTransfer}
           onUploadImage={async (file) => {
             if (
               !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
@@ -1015,7 +1077,23 @@ export default function Editor({
                 notify(readableError(e));
               }
             }}
+            currentView={currentView}
+            onUnlock={() => {
+              if (viewIsLocked(board, currentView))
+                change((b) => ({
+                  ...b,
+                  views: projectViews(b).map((v) =>
+                    v.id === currentView ? { ...v, locked: false } : v,
+                  ),
+                }));
+              else updateBlock(selected, { locked: false });
+            }}
             onArrange={(direction) =>
+              !blockIsLocked(
+                board,
+                board.blocks.find((b) => b.id === selected),
+                currentView,
+              ) &&
               change((b) => {
                 const block = b.blocks.find((x) => x.id === selected),
                   others = b.blocks.filter((x) => x.id !== selected);
@@ -1042,6 +1120,73 @@ export default function Editor({
         <div className="upload-progress" role="status">
           <Icon name="Loader2" className="spin" /> Uploading CSV to Firebase…
         </div>
+      )}
+      {modal?.type === "transfer" && (
+        <Modal
+          title={
+            modal.mode === "copy"
+              ? "Copy to another view"
+              : "Move to another view"
+          }
+          onClose={() => setModal(null)}
+        >
+          <p>Contained blocks in a section or Tabs block are included.</p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (viewIsLocked(boardRef.current, modal.targetViewId)) {
+                notify("Unlock the destination view first.");
+                return;
+              }
+              const source = boardRef.current.blocks.find(
+                (b) => b.id === modal.blockId,
+              );
+              if (
+                modal.mode === "move" &&
+                blockIsLocked(boardRef.current, source, currentView)
+              ) {
+                notify("Unlock this block before moving it.");
+                return;
+              }
+              change((b) =>
+                transferToView(
+                  b,
+                  modal.blockId,
+                  modal.targetViewId,
+                  modal.mode,
+                ),
+              );
+              setActiveViewId(modal.targetViewId);
+              setModal(null);
+              notify(
+                modal.mode === "copy"
+                  ? "Copied to the selected view."
+                  : "Moved to the selected view.",
+              );
+            }}
+          >
+            <Field label="Destination view">
+              <select
+                value={modal.targetViewId}
+                onChange={(e) =>
+                  setModal((m) => ({ ...m, targetViewId: e.target.value }))
+                }
+              >
+                {projectViews(board)
+                  .filter((v) => v.id !== currentView)
+                  .map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                      {v.locked ? " (locked)" : ""}
+                    </option>
+                  ))}
+              </select>
+            </Field>
+            <button className="btn primary full">
+              {modal.mode === "copy" ? "Copy to view" : "Move to view"}
+            </button>
+          </form>
+        </Modal>
       )}
       {modal?.type === "leave" && (
         <Modal
@@ -1126,7 +1271,7 @@ export default function Editor({
           </div>
           {publicationId && (
             <>
-              <Field label="Presentation URL">
+              <Field label="Published URL">
                 <div className="copy-field">
                   <input
                     readOnly
@@ -1235,7 +1380,7 @@ export default function Editor({
               rename it.
             </li>
             <li>
-              Present previews the board; Publish creates a read-only URL.
+              Publish creates a read-only URL. Live mode is private and only allows adding table rows.
             </li>
           </ul>
           <p className="muted">

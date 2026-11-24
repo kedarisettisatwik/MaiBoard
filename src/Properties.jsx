@@ -1,5 +1,6 @@
 import { ExtraProperties } from "./ExtendedBlocks";
-import React, { useState } from "react";
+import { chartColor, chartPalettes } from './chartColors';
+import React, { useState,useEffect } from "react";
 import { Icon, IconButton, Field, typeIcons } from "./ui";
 import {
   defaultStyle,
@@ -8,8 +9,13 @@ import {
   deleteColumn,
   safeUrl,
   projectViews,
+  blockIsLocked,
+  viewIsLocked,
+  isBackgroundColor,
+  reportData,
 } from "./model";
 const colorPresets = [
+  "transparent",
   "#ffffff",
   "#e9edf5",
   "#d4e0f7",
@@ -28,10 +34,13 @@ export default function Properties({
   onDownload,
   onClose,
   onArrange,
+  currentView,
+  onUnlock,
 }) {
   const block = board.blocks.find((b) => b.id === selected),
     edge = board.edges.find((e) => e.id === selected),
-    [column, setColumn] = useState("");
+    [column, setColumn] = useState(""),[backgroundDraft,setBackgroundDraft]=useState('');
+  useEffect(()=>setBackgroundDraft(block?.style?.background||defaultStyle.background),[selected,block?.style?.background]);
   if (!block && !edge)
     return (
       <aside className="properties-panel">
@@ -64,6 +73,9 @@ export default function Properties({
         </div>
       </aside>
     );
+  const locked = block
+    ? blockIsLocked(board, block, currentView)
+    : viewIsLocked(board, currentView);
   const update = (patch, key = "properties") =>
       block
         ? updateBlock(block.id, patch, key)
@@ -105,9 +117,23 @@ export default function Properties({
         <span className="selection-dot" />
       </div>
       <div className="properties-scroll">
+        {locked && (
+          <div className="lock-notice">
+            <Icon name="Lock" size={17} />
+            <span>
+              Locked. Tabs and table row/column actions remain available.
+            </span>
+            <button className="text-button" onClick={onUnlock}>
+              Unlock
+            </button>
+          </div>
+        )}
         {block ? (
           <>
-            <section className="property-section">
+            <section
+              className="property-section"
+              inert={locked ? true : undefined}
+            >
               <Field label="Block name">
                 <input
                   value={block.name}
@@ -150,31 +176,36 @@ export default function Properties({
                 </select>
               </Field>
             </section>
-            <ExtraProperties board={board} block={block} update={update} />
-            <section className="property-section">
+            <div inert={locked ? true : undefined}>
+              <ExtraProperties board={board} block={block} update={update} />
+            </div>
+            <section
+              className="property-section"
+              inert={locked ? true : undefined}
+            >
               <h3>Appearance</h3>
               <Field label="Background">
                 <div className="color-field">
                   <input
                     type="color"
                     aria-label="Background color"
-                    value={s.background}
+                    value={/^#[0-9a-f]{6}$/i.test(s.background)?s.background:'#ffffff'}
                     onChange={(e) =>
                       style({ background: e.target.value }, "background")
                     }
                   />
-                  <span>{s.background.toUpperCase()}</span>
+                  <input className="custom-color-input" aria-label="Custom background color" value={backgroundDraft} onChange={e=>{const value=e.target.value.trim();setBackgroundDraft(e.target.value);if(isBackgroundColor(value))style({background:value,...(value==='transparent'&&s.color.toLowerCase()==='#ffffff'?{color:'#2563eb'}:{})},'background')}} onBlur={()=>{if(!isBackgroundColor(backgroundDraft))setBackgroundDraft(s.background)}} placeholder="#2563eb or transparent"/>
                 </div>
               </Field>
               <div className="color-swatches">
                 {colorPresets.map((c) => (
                   <button
                     key={c}
-                    style={{ background: c }}
+                    style={{ background: c }} data-transparent={c==='transparent'||undefined}
                     className={s.background === c ? "chosen" : ""}
                     title={`Background ${c}`}
                     aria-label={`Background ${c}`}
-                    onClick={() => style({ background: c })}
+                    onClick={() => style({ background: c,...(c==='transparent'&&s.color.toLowerCase()==='#ffffff'?{color:'#2563eb'}:{}) })}
                   />
                 ))}
               </div>
@@ -225,7 +256,10 @@ export default function Properties({
               </div>
             </section>
             {["text", "tabs", "button"].includes(block.type) && (
-              <section className="property-section">
+              <section
+                className="property-section"
+                inert={locked ? true : undefined}
+              >
                 <h3>Typography</h3>
                 <Field label="Block font">
                   <select
@@ -266,7 +300,10 @@ export default function Properties({
               </section>
             )}
             {block.type === "button" && (
-              <section className="property-section">
+              <section
+                className="property-section"
+                inert={locked ? true : undefined}
+              >
                 <h3>Button link</h3>
                 <Field label="Button label">
                   <input
@@ -406,7 +443,10 @@ export default function Properties({
               </section>
             )}
             {block.type === "tabs" && (
-              <section className="property-section">
+              <section
+                className="property-section"
+                inert={locked ? true : undefined}
+              >
                 <h3>Tabs</h3>
                 {block.tabs.map((t) => (
                   <div className="tab-property" key={t.id}>
@@ -505,7 +545,10 @@ export default function Properties({
               </section>
             )}
             {block.type === "report" && (
-              <section className="property-section">
+              <section
+                className="property-section"
+                inert={locked ? true : undefined}
+              >
                 <h3>Report data</h3>
                 <Field label="Report source">
                   <select
@@ -642,13 +685,31 @@ export default function Properties({
                     2,
                     20,
                   )}
+                <Field label="Chart palette">
+                  <select value={block.report.palette || 'Blue'} onChange={e=>update({report:{...block.report,palette:e.target.value,colors:{}}})}>
+                    {Object.keys(chartPalettes).map(name=><option key={name}>{name}</option>)}
+                  </select>
+                </Field>
+                <div className="chart-color-controls">
+                  <h3>Category colors</h3>
+                  {reportData(block,board.blocks).data.map((item,index)=><Field key={item.name} label={item.name}>
+                    <div className="color-field">
+                      <input type="color" aria-label={`Chart color for ${item.name}`} value={chartColor(block.report,item.name,index)} onChange={e=>update({report:{...block.report,colors:{...block.report.colors,[item.name]:e.target.value}}},'chart-color')}/>
+                      <input className="chart-color-hex" aria-label={`Chart hex for ${item.name}`} key={`${block.id}-${item.name}-${chartColor(block.report,item.name,index)}`} defaultValue={chartColor(block.report,item.name,index)} onBlur={e=>{if(/^#[\da-f]{6}$/i.test(e.target.value))update({report:{...block.report,colors:{...block.report.colors,[item.name]:e.target.value}}});else e.target.value=chartColor(block.report,item.name,index)}}/>
+                    </div>
+                  </Field>)}
+                  <button className="btn" onClick={()=>update({report:{...block.report,colors:{}}})}>Reset category colors</button>
+                </div>
                 <p className="property-hint">
                   This report stays connected to its source. Edits to the data
                   appear here automatically.
                 </p>
               </section>
             )}
-            <section className="property-section">
+            <section
+              className="property-section"
+              inert={locked ? true : undefined}
+            >
               <h3>Arrange</h3>
               <div className="property-buttons">
                 <button className="btn" onClick={() => onArrange("front")}>
@@ -663,14 +724,21 @@ export default function Properties({
               <button className="btn" onClick={onDuplicate}>
                 <Icon name="Copy" size={16} /> Duplicate
               </button>
-              <button className="btn danger" onClick={onDelete}>
+              <button
+                className="btn danger"
+                disabled={locked}
+                onClick={onDelete}
+              >
                 <Icon name="Trash2" size={16} /> Delete
               </button>
             </div>
           </>
         ) : (
           <>
-            <section className="property-section">
+            <section
+              className="property-section"
+              inert={locked ? true : undefined}
+            >
               <h3>Connector</h3>
               <Field label="From block">
                 <select

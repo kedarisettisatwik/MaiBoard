@@ -57,12 +57,13 @@ export default function App() {
       notify(readableError(e));
     }
   };
-  const viewerId = route.startsWith("/view/") ? route.slice(6) : null,
+  const liveId = route.startsWith('/live/') ? route.slice(6) : null,
+    viewerId = route.startsWith("/view/") ? route.slice(6) : null,
     projectId = route.startsWith("/project/") ? route.slice(9) : null;
   return (
     <>
       <Suspense fallback={<Spinner />}>
-        {viewerId ? (
+        {liveId ? (!authReady ? <Spinner/> : user ? <Viewer key={`live-${user.uid}-${liveId}`} id={liveId} live user={user}/> : <div className="load-error"><Logo/><h1>Sign in to open Live mode</h1><p>Only the project owner can add table rows.</p><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : viewerId ? (
           <Viewer id={viewerId} />
         ) : route === "/demo" ? (
           <Editor
@@ -137,7 +138,7 @@ function AuthModal({ mode, setMode, onClose, notify }) {
       } else {
         await signInWithEmailAndPassword(auth, email, password);
         onClose();
-        if (!location.hash.includes("/project/")) navigate("/");
+        if (!/\/(project|live)\//.test(location.hash)) navigate("/");
       }
     } catch (e) {
       setError(readableError(e));

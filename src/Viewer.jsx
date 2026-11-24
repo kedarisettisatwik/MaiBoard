@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import { getPublication } from "./firebase";
-import { readableError, viewBlocks, projectViews, startingView } from "./model";
-import { Logo, Icon, IconButton, Spinner, ErrorMessage } from "./ui";
+import { getPublication, loadProject, addLiveTableRow } from "./firebase";
+import { readableError, viewBlocks, projectViews, startingView, upgradeBoard } from "./model";
+import { Logo, Icon, IconButton, Spinner, ErrorMessage, Modal, Field } from "./ui";
 import { PresentationTabs } from "./Views";
 import BoardStage, { blockHeight } from "./BoardStage";
-export default function Viewer({ id }) {
+export default function Viewer({ id, live=false, user }) {
   const [board, setBoard] = useState(null),
     [error, setError] = useState(""),
     [view, setView] = useState({ x: 0, y: 0, z: 1 }),
@@ -12,14 +12,15 @@ export default function Viewer({ id }) {
     [retry, setRetry] = useState(0),
     [activeView, setActiveView] = useState(null),
     [runtimeTabs, setRuntimeTabs] = useState({}),
+    [rowTarget,setRowTarget]=useState(null),[rowValues,setRowValues]=useState([]),[rowError,setRowError]=useState(''),[savingRow,setSavingRow]=useState(false),
     stageRef = useRef();
   useEffect(() => {
     let active = true;
     setError("");
-    getPublication(id)
+    (live ? loadProject(user.uid,id) : getPublication(id))
       .then((p) => {
         if (active) {
-          setBoard(JSON.parse(p.boardJson));
+          setBoard(upgradeBoard(JSON.parse(p.boardJson)));
           setPublishedAt(p.publishedAt?.toDate?.());
         }
       })
@@ -27,7 +28,9 @@ export default function Viewer({ id }) {
         if (active) setError(readableError(e));
       });
     return () => (active = false);
-  }, [id, retry]);
+  }, [id, retry, live, user?.uid]);
+  const openRow=(blockId)=>{const block=board.blocks.find(b=>b.id===blockId&&b.type==='table');if(!live||!block)return;setRowTarget(structuredClone(block));setRowValues(block.table.columns.map(()=>''));setRowError('');};
+  const saveRow=async(e)=>{e.preventDefault();setSavingRow(true);setRowError('');try{const updated=await addLiveTableRow(user.uid,id,rowTarget.id,rowValues,rowTarget.table.columns.map(c=>c.id));setBoard(upgradeBoard(updated));setRowTarget(null);}catch(e){setRowError(readableError(e));}finally{setSavingRow(false);}};
   const currentView = activeView || (board ? startingView(board) : "view-1");
   const fit = () => {
     if (!board) return;
@@ -72,8 +75,9 @@ export default function Viewer({ id }) {
         <span className="nav-divider" />
         <strong>{board?.name || "Presentation"}</strong>
         <span className="viewer-readonly">
-          <Icon name="Eye" size={15} /> Read-only presentation
+          <Icon name={live?'Lock':'Eye'} size={15} /> {live?'Live mode · add rows only':'Published · read only'}
         </span>
+        {live && <button className="btn" onClick={()=>location.hash=`/project/${id}`}>Back to editor</button>}
       </nav>
       {board && !error && (
         <PresentationTabs
@@ -104,12 +108,13 @@ export default function Viewer({ id }) {
           view={view}
           setView={setView}
           readOnly
+          onAddLiveRow={live?openRow:undefined}
           stageRef={stageRef}
         >
           <div className="viewer-caption canvas-overlay">
             <Icon name="Lock" size={13} />
             <span>
-              Published snapshot
+              {live?'Private working project':'Published snapshot'}
               {publishedAt ? ` · ${publishedAt.toLocaleDateString()}` : ""}
             </span>
           </div>
@@ -139,6 +144,7 @@ export default function Viewer({ id }) {
           </div>
         </BoardStage>
       )}
+      {rowTarget && <Modal title={`Add row to ${rowTarget.name}`} onClose={()=>{if(!savingRow)setRowTarget(null)}}><form onSubmit={saveRow}><p>Existing rows, columns, and other blocks stay read only.</p>{rowTarget.table.columns.map((c,i)=><Field key={c.id} label={c.name}><input aria-label={`New row ${c.name}`} maxLength={10000} value={rowValues[i]} onChange={e=>setRowValues(values=>values.map((v,j)=>j===i?e.target.value:v))}/></Field>)}<ErrorMessage>{rowError}</ErrorMessage><button className="btn primary" disabled={savingRow}>{savingRow?'Saving…':'Add row'}</button></form></Modal>}
     </div>
   );
 }

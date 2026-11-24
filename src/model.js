@@ -93,12 +93,14 @@ export function newBlock(type, x = 100, y = 100) {
       { id: uid(), name: "Details", html: "<p>Make room for the details.</p>" },
     ]),
       (b.activeTab = b.tabs[0].id));
-  if (type === "button")
+  if (type === "button") {
+    b.w=200;b.h=48;b.bareButton=true;b.style={...b.style,background:'#2563eb',color:'#ffffff',radius:8,padding:12,borderWidth:0};
     b.link = {
       label: "Explore more",
       url: "https://example.com",
       newTab: true,
     };
+  }
   if (type === "report")
     b.report = {
       tableId: "",
@@ -474,6 +476,62 @@ export function isBlockVisible(block, blocks) {
   const p = blocks.find((b) => b.id === block.parentId && b.type === "section");
   return !p || !p.hidden;
 }
+export function parentBounds(board, block) {
+  const section = board.blocks.find(
+    (b) => b.id === block.parentId && b.type === "section",
+  );
+  if (section)
+    return {
+      x: section.x + 12,
+      y: section.y + 55,
+      w: Math.max(20, section.w - 24),
+      h: Math.max(20, (section.h || 260) - 67),
+    };
+  const tabs = board.blocks.find(
+    (b) => b.id === block.tabParentId && b.type === "tabs",
+  );
+  if (tabs)
+    return {
+      x: 12,
+      y: 12,
+      w: Math.max(20, tabs.w - (tabs.tabLayout === "vertical" ? 130 : 0) - 26),
+      h: Math.max(20, (tabs.h || 280) - 110),
+    };
+  return { x: 0, y: 0, w: 12000, h: 8000 };
+}
+export function normalizeContainment(board) {
+  const blocks = board.blocks.map((b) => ({ ...b })),
+    byId = new Map(blocks.map((b) => [b.id, b])),
+    done = new Set(),
+    visiting = new Set();
+  function fit(b) {
+    if (done.has(b.id) || visiting.has(b.id)) return;
+    visiting.add(b.id);
+    const section = byId.get(b.parentId);
+    if (section?.type === "section") {
+      fit(section);
+      b.tabParentId = section.tabParentId || "";
+      b.tabId = section.tabId || "";
+    }
+    const tabs = byId.get(b.tabParentId);
+    if (tabs?.type === "tabs") fit(tabs);
+    const bounds = parentBounds({ ...board, blocks }, b);
+    b.w = Math.max(20, Math.min(b.w || 340, bounds.w));
+    b.h = Math.max(20, Math.min(b.h || 260, bounds.h));
+    b.x = Math.max(
+      bounds.x,
+      Math.min(b.x ?? bounds.x, bounds.x + bounds.w - b.w),
+    );
+    b.y = Math.max(
+      bounds.y,
+      Math.min(b.y ?? bounds.y, bounds.y + bounds.h - b.h),
+    );
+    visiting.delete(b.id);
+    done.add(b.id);
+  }
+  for (const b of blocks) fit(b);
+  return { ...board, blocks };
+}
 export function updateBoardBlock(board, id, patch) {
   const old = board.blocks.find((b) => b.id === id);
   if (!old) return board;
@@ -492,18 +550,26 @@ export function updateBoardBlock(board, id, patch) {
       ),
     };
   }
-  const dx = (patch.x ?? old.x) - old.x,
-    dy = (patch.y ?? old.y) - old.y;
-  return {
+  let result = normalizeContainment({
     ...board,
-    blocks: board.blocks.map((b) =>
-      b.id === id
-        ? { ...b, ...patch }
-        : old.type === "section" && b.parentId === id
-          ? { ...b, x: b.x + dx, y: b.y + dy }
-          : b,
-    ),
-  };
+    blocks: board.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+  });
+  const actual = result.blocks.find((b) => b.id === id),
+    dx = actual.x - old.x,
+    dy = actual.y - old.y;
+  if (old.type === "section" && (dx || dy)) {
+    result = {
+      ...result,
+      blocks: result.blocks.map((b) => {
+        const original = board.blocks.find((x) => x.id === b.id);
+        return b.parentId === id
+          ? { ...b, x: original.x + dx, y: original.y + dy }
+          : b;
+      }),
+    };
+    result = normalizeContainment(result);
+  }
+  return result;
 }
 export function relocateLayer(
   board,
@@ -530,6 +596,13 @@ export function relocateLayer(
   )
     return board;
   if (groupId && !board.groups.some((x) => x.id === groupId)) return board;
+  const parentSection = board.blocks.find(
+    (x) => x.id === parentId && x.type === "section",
+  );
+  if (parentSection) {
+    tabParentId = parentSection.tabParentId || "";
+    tabId = parentSection.tabId || "";
+  }
   if (
     tabParentId &&
     !board.blocks.some(
@@ -546,7 +619,9 @@ export function relocateLayer(
   while (ancestor && !seen.has(ancestor.id)) {
     if (ancestor.id === id) return board;
     seen.add(ancestor.id);
-    ancestor = board.blocks.find((x) => x.id === ancestor.tabParentId);
+    ancestor = board.blocks.find(
+      (x) => x.id === (ancestor.parentId || ancestor.tabParentId),
+    );
   }
   const moved = {
       ...b,
@@ -562,7 +637,7 @@ export function relocateLayer(
     moved.y = 20;
   }
   blocks.splice(index < 0 ? blocks.length : index, 0, moved);
-  return {
+  return normalizeContainment({
     ...board,
     blocks: blocks.map((x) =>
       x.id === tabParentId
@@ -577,7 +652,7 @@ export function relocateLayer(
           }
         : x,
     ),
-  };
+  });
 }
 
 export function projectViews(board) {
@@ -613,4 +688,118 @@ export function presentationTabs(board) {
 }
 export function startingView(board) {
   return board.startViewId || projectViews(board)[0].id;
+}
+
+export function viewIsLocked(board, viewId) {
+  return !!projectViews(board).find(
+    (v) => v.id === (viewId || board.startViewId || projectViews(board)[0].id),
+  )?.locked;
+}
+export function blockIsLocked(board, block, viewId) {
+  return !!block?.locked || viewIsLocked(board, viewId);
+}
+export function canUpdateBlock(board, block, patch, viewId) {
+  if (!blockIsLocked(board, block, viewId)) return true;
+  const keys = Object.keys(patch);
+  return (
+    keys.every((k) => ["locked", "hidden"].includes(k)) ||
+    (block?.type === "table" && keys.every((k) => k === "table")) ||
+    (block?.type === "tabs" && keys.every((k) => k === "activeTab"))
+  );
+}
+
+function cloneIntoView(board, ids, rootIds, targetViewId) {
+  const map = new Map([...ids].map((id) => [id, uid()]));
+  const clones = board.blocks
+    .filter((b) => ids.has(b.id))
+    .map((b) => {
+      const c = structuredClone(b);
+      c.id = map.get(b.id);
+      c.viewId = targetViewId;
+      c.locked = false;
+      if (rootIds.has(b.id)) {
+        c.parentId = "";
+        c.tabParentId = "";
+        c.tabId = "";
+      } else {
+        if (map.has(b.parentId)) c.parentId = map.get(b.parentId);
+        if (map.has(b.tabParentId)) c.tabParentId = map.get(b.tabParentId);
+      }
+      if (c.report?.tableId && map.has(c.report.tableId))
+        c.report.tableId = map.get(c.report.tableId);
+      if (c.report?.kanbanId && map.has(c.report.kanbanId))
+        c.report.kanbanId = map.get(c.report.kanbanId);
+      if (c.link?.targetTabBlockId && map.has(c.link.targetTabBlockId))
+        c.link.targetTabBlockId = map.get(c.link.targetTabBlockId);
+      return c;
+    });
+  const edges = board.edges
+    .filter((e) => ids.has(e.from) && ids.has(e.to))
+    .map((e) => ({
+      ...e,
+      id: uid(),
+      from: map.get(e.from),
+      to: map.get(e.to),
+    }));
+  return normalizeContainment({
+    ...board,
+    blocks: [...board.blocks, ...clones],
+    edges: [...board.edges, ...edges],
+  });
+}
+export function transferToView(board, id, targetViewId, mode = "copy") {
+  if (
+    !projectViews(board).some((v) => v.id === targetViewId) ||
+    viewIsLocked(board, targetViewId)
+  )
+    return board;
+  const source = board.blocks.find((b) => b.id === id);
+  if (!source) return board;
+  const ids = ownedBlockIds(board, id);
+  if (mode === "copy")
+    return cloneIntoView(board, ids, new Set([id]), targetViewId);
+  return normalizeContainment({
+    ...board,
+    blocks: board.blocks.map((b) =>
+      !ids.has(b.id)
+        ? b
+        : {
+            ...b,
+            viewId: targetViewId,
+            ...(b.id === id
+              ? { parentId: "", tabParentId: "", tabId: "" }
+              : {}),
+          },
+    ),
+  });
+}
+export function copyView(board, sourceViewId, newView) {
+  const first = projectViews(board)[0].id,
+    roots = board.blocks.filter(
+      (b) =>
+        !b.parentId && !b.tabParentId && (b.viewId || first) === sourceViewId,
+    ),
+    ids = new Set();
+  for (const root of roots)
+    for (const id of ownedBlockIds(board, root.id)) ids.add(id);
+  return cloneIntoView(
+    {
+      ...board,
+      views: [...projectViews(board), { ...newView, locked: false }],
+    },
+    ids,
+    new Set(roots.map((b) => b.id)),
+    newView.id,
+  );
+}
+
+export function upgradeBoard(board){return{...board,blocks:board.blocks.map(b=>b.type==='button'&&!b.bareButton?{...b,w:Math.min(b.w||200,240),h:48,bareButton:true,style:{...defaultStyle,...b.style,background:b.style?.color||'#2563eb',color:b.style?.background||'#ffffff',padding:12,borderWidth:0}}:b)}}
+export function isBackgroundColor(value){return value==='transparent'||/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)}
+export function appendLiveRow(board,blockId,values,columnIds){
+  const block=board.blocks.find(b=>b.id===blockId&&b.type==='table');
+  if(!block)throw Error('The table no longer exists.');
+  if(!Array.isArray(values)||values.length!==block.table.columns.length||!Array.isArray(columnIds)||columnIds.length!==block.table.columns.length||columnIds.some((id,i)=>id!==block.table.columns[i]?.id))throw Error('The table columns changed. Reopen Add row and try again.');
+  if(values.some(v=>typeof v!=='string'||v.length>10000))throw Error('Each cell must contain at most 10,000 characters.');
+  if(block.table.rows.length>=5000)throw Error('This table has reached its row limit.');
+  return {...board,blocks:board.blocks.map(b=>b.id===blockId?{...b,table:{...b.table,rows:[...b.table.rows,[...values]]}}:b)};
 }

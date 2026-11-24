@@ -1,18 +1,7 @@
 import React, { useState } from "react";
 import { reportData, formatNumber } from "./model";
 import { Icon } from "./ui";
-const colors = [
-  "#28447b",
-  "#7787a7",
-  "#a7b4ce",
-  "#8ca7db",
-  "#8cadd0",
-  "#c59daa",
-  "#9e90bc",
-  "#d49a73",
-  "#727f97",
-  "#c1b8a7",
-];
+import { chartColor } from './chartColors';
 export default function Report({ block, blocks }) {
   const result = reportData(block, blocks),
     [hover, setHover] = useState(null);
@@ -63,7 +52,7 @@ export default function Report({ block, blocks }) {
                   cy="100"
                   r="70"
                   fill="none"
-                  stroke={colors[i % colors.length]}
+                  stroke={chartColor(block.report,d.name,i)}
                   strokeWidth={hover === i ? 39 : 34}
                   strokeDasharray={`${Math.max(0, length - 0.9)} ${439.823 - length + 0.9}`}
                   strokeDashoffset={-start}
@@ -94,7 +83,7 @@ export default function Report({ block, blocks }) {
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
               >
-                <span style={{ background: colors[i % colors.length] }} />
+                <span style={{ background: chartColor(block.report,d.name,i) }} />
                 <span title={d.name}>{d.name}</span>
                 <strong>{((d.value / total) * 100).toFixed(0)}%</strong>
               </div>
@@ -123,7 +112,7 @@ export default function Report({ block, blocks }) {
                       position: "absolute",
                       top: `${((max - Math.max(d.value, 0)) / range) * 100}%`,
                       height: `${Math.max(0.5, (Math.abs(d.value) / range) * 100)}%`,
-                      background: colors[i % colors.length],
+                      background: chartColor(block.report,d.name,i),
                     }}
                     title={`${d.name}: ${formatNumber(d.value)}`}
                   >

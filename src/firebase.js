@@ -10,6 +10,7 @@ import {
   onSnapshot,
   serverTimestamp,
   writeBatch,
+  runTransaction,
   connectFirestoreEmulator,
 } from "firebase/firestore";
 import {
@@ -21,7 +22,7 @@ import {
   deleteObject,
   connectStorageEmulator,
 } from "firebase/storage";
-import { boardBytes, publishSnapshot, uid } from "./model";
+import { boardBytes, publishSnapshot, uid, appendLiveRow } from "./model";
 export const firebaseConfig = {
   apiKey: "AIzaSyBW6rdJqvrYW2eQwo7QsAxfpczf66I027Y",
   authDomain: "maiboard-d0af8.firebaseapp.com",
@@ -77,6 +78,17 @@ export async function loadProject(userId, id) {
   if (!snap.exists())
     throw Error("This project does not exist or has been deleted.");
   return { id: snap.id, ...snap.data() };
+}
+export async function addLiveTableRow(userId,id,blockId,values,columnIds) {
+  if(auth.currentUser?.uid!==userId)throw Error('Sign in as the project owner to add rows.');
+  return runTransaction(db,async transaction=>{
+    const target=projectRef(userId,id),snapshot=await transaction.get(target);
+    if(!snapshot.exists())throw Error('This project is unavailable for your account.');
+    const board=appendLiveRow(JSON.parse(snapshot.data().boardJson),blockId,values,columnIds);
+    if(boardBytes(board)>800000)throw Error('This board is too large to save another row.');
+    transaction.update(target,{boardJson:JSON.stringify(board),updatedAt:serverTimestamp()});
+    return board;
+  });
 }
 export async function saveProject(userId, id, board) {
   if (boardBytes(board) > 800000)

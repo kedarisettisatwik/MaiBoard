@@ -23,40 +23,6 @@ export function TabsBlock({
     highlight = block.tabHighlight || "underline";
   const content = (t) => (
     <>
-      {!readOnly && (
-        <div className="tab-block-tools">
-          <select
-            aria-label={`Add block to tab ${t.name}`}
-            value=""
-            onChange={(e) => {
-              if (e.target.value) onAddToTab?.(e.target.value, block.id, t.id);
-            }}
-          >
-            <option value="">+ Add block to this tab</option>
-            {[
-              "text",
-              "table",
-              "button",
-              "image",
-              "report",
-              "kanban",
-              "tabs",
-              "section",
-            ].map((type) => (
-              <option key={type} value={type}>
-                {type === "kanban"
-                  ? "K board"
-                  : type[0].toUpperCase() + type.slice(1)}
-              </option>
-            ))}
-          </select>
-          {t.viewId && (
-            <small>
-              Showing a view reference. Edit it from the project view selector.
-            </small>
-          )}
-        </div>
-      )}
       {t.viewId ? (
         renderCanvas?.(t, t.viewId)
       ) : t.contentType === "blocks" || block.childrenMode ? (
@@ -497,28 +463,11 @@ export function ExtraProperties({ board, block, update }) {
           <option value="*">All views</option>
         </select>
       </Field>
-      {block.type !== "section" && (
-        <Field label="Parent section">
-          <select
-            value={block.parentId || ""}
-            onChange={(e) => update({ parentId: e.target.value })}
-          >
-            <option value="">No section</option>
-            {board.blocks
-              .filter((b) => b.type === "section")
-              .map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-          </select>
-        </Field>
-      )}
       {block.type === "section" && (
         <p className="property-hint">
           Place blocks inside this rectangle or assign their Parent section
-          here. Moving or hiding a section includes its blocks. Deleting the
-          section keeps its contents.
+          here. Dragging stays inside the parent. Moving or hiding a section
+          includes its blocks. Deleting the section keeps its contents.
         </p>
       )}
       {block.type === "tabs" && (
