@@ -4,7 +4,7 @@ import { uid, projectViews, copyView } from "./model";
 import { presentationTabs } from "./model";
 export function PresentationTabs({ board, current, onSelect }) {
   const tabs = presentationTabs(board);
-  if (tabs.length < 2) return null;
+  if (board.showViewNavigation!==true || tabs.length < 2) return null;
   return (
     <nav className="presentation-tabs" aria-label="Presentation views">
       <div role="tablist">
@@ -26,11 +26,13 @@ export function PresentationTabs({ board, current, onSelect }) {
 export default function Views({ board, current, onSelect, change }) {
   const [editing, setEditing] = useState(null),
     [name, setName] = useState(""),
-    [newViewSource, setNewViewSource] = useState("");
+    [newViewSource, setNewViewSource] = useState(""),[navigationSettings,setNavigationSettings]=useState(false);
   const views = projectViews(board),
     locked = !!views.find((v) => v.id === current)?.locked;
   return (
     <div className="view-controls">
+      <IconButton icon="Settings2" title="View navigation settings" onClick={()=>setNavigationSettings(true)}/>
+      {navigationSettings&&<Modal title="Project view navigation" onClose={()=>setNavigationSettings(false)}><label className="view-navigation-option"><input type="checkbox" checked={board.showViewNavigation===true} onChange={e=>change(b=>({...b,showViewNavigation:e.target.checked}))}/> Show view navigation</label><p>Off by default. Published and Live modes hide the top view tabs. Use your own buttons to move between views. Tabs inside your blocks remain available.</p><button className="btn primary" onClick={()=>setNavigationSettings(false)}>Done</button></Modal>}
       <select
         aria-label="Current view"
         value={current}

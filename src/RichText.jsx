@@ -71,6 +71,8 @@ export default function RichText({ value, onChange, active, onEditor, style }) {
   });
   const [link, setLink] = useState(null),
     [error, setError] = useState("");
+  const [colorMode,setColorMode]=useState(null),[selectedColor,setSelectedColor]=useState('#fde047'),colorSelection=useRef(null);
+  const openColor=(mode)=>{colorSelection.current={from:editor.state.selection.from,to:editor.state.selection.to};setSelectedColor(mode==='highlight'?(editor.getAttributes('highlight').color||'#fde047'):(editor.getAttributes('textStyle').color||'#2563eb'));setColorMode(mode);};
   useEffect(() => {
     if (editor && !editor.isDestroyed && value !== editor.getHTML())
       editor.commands.setContent(value, { emitUpdate: false });
@@ -140,14 +142,9 @@ export default function RichText({ value, onChange, active, onEditor, style }) {
               title="Highlight selection"
               active={editor.isActive("highlight")}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() =>
-                editor
-                  .chain()
-                  .focus()
-                  .toggleHighlight({ color: "#82a9f3" })
-                  .run()
-              }
+              onClick={() => openColor('highlight')}
             />
+            <button className="text-color-button" title="Text color for selection" aria-label="Text color for selection" onMouseDown={e=>e.preventDefault()} onClick={()=>openColor('text')}><strong>A</strong><span style={{background:editor.getAttributes('textStyle').color||'#2563eb'}}/></button>
             <IconButton
               icon="Heading2"
               title="Heading"
@@ -192,6 +189,7 @@ export default function RichText({ value, onChange, active, onEditor, style }) {
           document.getElementById("text-tools-dock"),
         )}
       <EditorContent editor={editor} />
+      {colorMode&&<Modal title={colorMode==='highlight'?'Choose highlight color':'Choose text color'} onClose={()=>setColorMode(null)}><form onSubmit={e=>{e.preventDefault();const chain=editor.chain().focus().setTextSelection(colorSelection.current);if(colorMode==='highlight')chain.setHighlight({color:selectedColor}).run();else chain.setColor(selectedColor).run();setColorMode(null);}}><p>Apply a color to the selected words.</p><Field label="Color"><input aria-label="Selection color" type="color" value={selectedColor} onChange={e=>setSelectedColor(e.target.value)}/></Field><div className="selection-color-swatches">{['#111827','#2563eb','#dc2626','#16a34a','#7c3aed','#fde047','#93c5fd','#f9a8d4','#ffffff'].map(c=><button type="button" key={c} aria-label={`Choose ${c}`} style={{background:c}} onClick={()=>setSelectedColor(c)}/>)}</div><div className="modal-actions"><button type="button" className="btn" onClick={()=>{const chain=editor.chain().focus().setTextSelection(colorSelection.current);if(colorMode==='highlight')chain.unsetHighlight().run();else chain.unsetColor().run();setColorMode(null);}}>Remove color</button><button className="btn primary">Apply color</button></div></form></Modal>}
       {link !== null && (
         <Modal title="Add a hyperlink" onClose={() => setLink(null)}>
           <form

@@ -1,5 +1,6 @@
 import { ExtraProperties } from "./ExtendedBlocks";
 import { chartColor, chartPalettes } from './chartColors';
+import {cardMetrics} from './analytics';
 import React, { useState,useEffect } from "react";
 import { Icon, IconButton, Field, typeIcons } from "./ui";
 import {
@@ -305,6 +306,7 @@ export default function Properties({
                 inert={locked ? true : undefined}
               >
                 <h3>Button link</h3>
+                <label><input type="checkbox" checked={block.link.showIcon!==false} onChange={e=>update({link:{...block.link,showIcon:e.target.checked}})}/> Show icon</label>
                 <Field label="Button label">
                   <input
                     value={block.link.label}
@@ -591,7 +593,7 @@ export default function Properties({
                   >
                     <option value="">Choose a table or K board</option>
                     {board.blocks
-                      .filter((b) => b.type === "kanban")
+                      .filter((b) => b.type === "kanban" && block.report.kind!=='card')
                       .map((b) => (
                         <option key={b.id} value={"kanban:" + b.id}>
                           K board: {b.name}
@@ -616,6 +618,7 @@ export default function Properties({
                     }
                   >
                     <option value="pie">Pie chart</option>
+                    {block.report.sourceType!=='kanban'&&<option value="card">Report card</option>}
                     <option value="bar">Bar chart</option>
                     {block.report.sourceType !== "kanban" && (
                       <option value="histogram">Histogram</option>
@@ -623,7 +626,7 @@ export default function Properties({
                   </select>
                 </Field>
                 {block.report.sourceType !== "kanban" &&
-                  block.report.kind !== "histogram" && (
+                  !['histogram','card'].includes(block.report.kind) && (
                     <Field label="Label column">
                       <select
                         value={block.report.labelColumn}
@@ -685,7 +688,14 @@ export default function Properties({
                     2,
                     20,
                   )}
-                <Field label="Chart palette">
+                {block.report.kind==='card'&&<>
+                  <Field label="Calculation"><select value={block.report.metric||'max'} onChange={e=>update({report:{...block.report,metric:e.target.value}})}>{Object.entries(cardMetrics).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></Field>
+                  {block.report.metric==='rangeCount'&&<><Field label="Range minimum"><input type="number" value={block.report.rangeMin??''} onChange={e=>update({report:{...block.report,rangeMin:e.target.value}})}/></Field><Field label="Range maximum"><input type="number" value={block.report.rangeMax??''} onChange={e=>update({report:{...block.report,rangeMax:e.target.value}})}/></Field><label><input type="checkbox" checked={block.report.includeMin!==false} onChange={e=>update({report:{...block.report,includeMin:e.target.checked}})}/> Include minimum</label><label><input type="checkbox" checked={block.report.includeMax!==false} onChange={e=>update({report:{...block.report,includeMax:e.target.checked}})}/> Include maximum</label></>}
+                  <Field label="Decimal places"><input type="number" min="0" max="6" value={block.report.decimals||0} onChange={e=>update({report:{...block.report,decimals:Math.min(6,Math.max(0,+e.target.value))}})}/></Field>
+                  <Field label="Value prefix"><input value={block.report.prefix||''} onChange={e=>update({report:{...block.report,prefix:e.target.value}})}/></Field><Field label="Value suffix"><input value={block.report.suffix||''} onChange={e=>update({report:{...block.report,suffix:e.target.value}})}/></Field>
+                  <Field label="Value color"><input type="color" value={block.report.cardColor||'#2563eb'} onChange={e=>update({report:{...block.report,cardColor:e.target.value}})}/></Field>
+                </>}
+                {block.report.kind!=='card'&&<><Field label="Chart palette">
                   <select value={block.report.palette || 'Blue'} onChange={e=>update({report:{...block.report,palette:e.target.value,colors:{}}})}>
                     {Object.keys(chartPalettes).map(name=><option key={name}>{name}</option>)}
                   </select>
@@ -700,6 +710,7 @@ export default function Properties({
                   </Field>)}
                   <button className="btn" onClick={()=>update({report:{...block.report,colors:{}}})}>Reset category colors</button>
                 </div>
+                </>}
                 <p className="property-hint">
                   This report stays connected to its source. Edits to the data
                   appear here automatically.

@@ -48,13 +48,14 @@ export default function Editor({
   id,
   user,
   demo = false,
+  initialBoard,
   notify,
   onExit,
   onLogout,
   onSignIn,
 }) {
   const [board, setBoard] = useState(
-      demo ? sampleBoard("A little room to explore") : null,
+      demo ? (initialBoard || sampleBoard("A little room to explore")) : null,
     ),
     [loadError, setLoadError] = useState(""),
     [retry, setRetry] = useState(0),
@@ -241,7 +242,7 @@ export default function Editor({
     },
     [updateBlock],
   );
-  const add = (type, tabParentId, tabId) => {
+  const add = (type, tabParentId, tabId, reportKind) => {
     if (viewIsLocked(boardRef.current, currentView)) {
       notify("Unlock this view to add blocks.");
       return;
@@ -250,6 +251,7 @@ export default function Editor({
       x = Math.max(20, Math.round((r.width / 2 - view.x) / view.z - 170)),
       y = Math.max(40, Math.round((r.height / 2 - view.y) / view.z - 100)),
       b = newBlock(type, x, y);
+    source.current=null;setTool("select");
     b.viewId = currentView;
     if (tabParentId) {
       b.tabParentId = tabParentId;
@@ -290,6 +292,7 @@ export default function Editor({
         };
       }
     }
+    if(reportKind==='card'){b.name='Report card';b.w=260;b.h=195;b.report={...b.report,kind:'card',metric:'max',decimals:0};}
     change((p) => ({
       ...p,
       blocks: [
@@ -955,7 +958,7 @@ export default function Editor({
                   icon="Hand"
                   title="Move canvas (H)"
                   active={tool === "pan"}
-                  onClick={() => setTool("pan")}
+                  onClick={() => {source.current=null;setTool("pan");}}
                 />
                 <i />
                 <Tool
@@ -980,9 +983,10 @@ export default function Editor({
                 />
                 <Tool
                   icon="BarChart3"
-                  title="Report from a table"
+                  title="Chart from a table"
                   onClick={() => add("report")}
                 />
+                <Tool icon="LayoutDashboard" title="Report card" onClick={()=>add("report",null,null,"card")}/>
                 <Tool
                   icon="Image"
                   title="Image block"
@@ -1005,8 +1009,8 @@ export default function Editor({
                   active={tool === "connect"}
                   onClick={() => {
                     source.current = null;
-                    setTool("connect");
-                    notify("Select a source block, then its destination.");
+                    setTool(current=>current==='connect'?'select':'connect');
+                    if(tool!=='connect')notify("Select a source block, then its destination.");
                   }}
                 />
               </div>

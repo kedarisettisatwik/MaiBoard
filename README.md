@@ -119,3 +119,9 @@ All blocks support transparent backgrounds, a color picker, and custom hex color
 
 Publish generates a public, read-only snapshot URL (#/view/...) with no sign-in required. Live mode (#/live/...) requires the project owner to sign in. Its only data action is adding a new table row through a form; it cannot edit existing rows, rename tables, add columns, move blocks, or change styles. Row appends use a Firestore transaction to retain concurrent additions. Live changes update the private working project; publish again to refresh the public snapshot. Firestore owner rules protect private projects. Firebase configuration and rules must be activated as described above.
 
+
+Report cards: use the Report card toolbar tool or change a report's Chart type to Report card. Select a table, column, and calculation (maximum, minimum, average, sum, record count, distinct values, or count in a configurable range). Range limits support inclusive/exclusive boundaries. Numeric cards omit blank/nonnumeric cells and support decimals, prefix, suffix, and value color. Cards update with table edits and work in published snapshots. New project immediately creates an empty Untitled board. The dashboard shows four independent sample projects above personal projects: Table report, Employee onboarding, Team delivery, and Budget overview, with Preview and Use sample actions. Selected text has separate highlight/text color dialogs. Checklist labels align beside their checkboxes. Connect toggles back to Select and keeps toolbar controls clickable. Button Properties includes Show icon.
+
+
+Project view navigation is hidden by default in published and Live modes, including existing projects without an explicit setting. Use View navigation settings beside the editor view selector to enable Show view navigation. Button navigation remains active when view tabs are hidden; this is visual navigation control, not a restriction on the published snapshot's data.
+

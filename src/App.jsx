@@ -19,6 +19,7 @@ import {
   Spinner,
 } from "./ui";
 import Landing from "./Landing";
+import {sampleProjects,createSample} from "./templates";
 const Editor = lazy(() => import("./Editor")),
   Viewer = lazy(() => import("./Viewer"));
 export const navigate = (path) => {
@@ -65,10 +66,11 @@ export default function App() {
       <Suspense fallback={<Spinner />}>
         {liveId ? (!authReady ? <Spinner/> : user ? <Viewer key={`live-${user.uid}-${liveId}`} id={liveId} live user={user}/> : <div className="load-error"><Logo/><h1>Sign in to open Live mode</h1><p>Only the project owner can add table rows.</p><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : viewerId ? (
           <Viewer id={viewerId} />
-        ) : route === "/demo" ? (
+        ) : (route === "/demo" || route.startsWith("/sample/")) ? (
           <Editor
             demo
-            key="demo"
+            key={route}
+            initialBoard={route.startsWith("/sample/")?createSample(route.slice(8)):undefined}
             user={user}
             notify={notify}
             onExit={() => navigate("/")}
@@ -272,10 +274,7 @@ function Dashboard({ user, notify, onLogout }) {
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [search, setSearch] = useState(""),
-    [create, setCreate] = useState(false),
-    [name, setName] = useState(""),
-    [template, setTemplate] = useState("blank"),
-    [busy, setBusy] = useState(false),
+[busy, setBusy] = useState(false),
     [deleting, setDeleting] = useState(null),
     [retry, setRetry] = useState(0);
   useEffect(() => {
@@ -293,22 +292,11 @@ function Dashboard({ user, notify, onLogout }) {
       },
     );
   }, [user.uid, retry]);
-  const make = async (e) => {
-    e.preventDefault();
+  const make = async (sampleId) => {
+    if(busy)return;
     setBusy(true);
-    try {
-      const board =
-        template === "sample"
-          ? sampleBoard(name.trim())
-          : blankBoard(name.trim());
-      const id = await createProject(user.uid, board);
-      setCreate(false);
-      navigate(`/project/${id}`);
-    } catch (e) {
-      notify(readableError(e));
-    } finally {
-      setBusy(false);
-    }
+    try {const board=sampleId?createSample(sampleId):blankBoard('Untitled');const id=await createProject(user.uid,board);navigate('/project/'+id);}
+    catch(e){notify(readableError(e));}finally{setBusy(false);}
   };
   const filtered = projects.filter((p) =>
       p.name.toLowerCase().includes(search.toLowerCase()),
@@ -337,14 +325,15 @@ function Dashboard({ user, notify, onLogout }) {
           </div>
           <button
             className="btn primary"
-            onClick={() => {
-              setName("");
-              setCreate(true);
-            }}
+            disabled={busy} onClick={() => make()}
           >
             <Icon name="Plus" size={18} /> New project
           </button>
         </div>
+        <section className="sample-gallery" aria-label="Sample projects">
+          <div className="sample-heading"><div><h2>Start with an example</h2><p>Explore a ready-made board, then save your own copy.</p></div><span>Sample projects</span></div>
+          <div className="sample-grid">{sampleProjects.map(sample=><article className="sample-card" key={sample.id}><div className="sample-icon"><Icon name={sample.icon} size={24}/></div><h3>{sample.name}</h3><p>{sample.description}</p><div><button className="btn" onClick={()=>navigate('/sample/'+sample.id)}>Preview</button><button className="btn primary" disabled={busy} onClick={()=>make(sample.id)}>Use sample</button></div></article>)}</div>
+        </section>
         <div className="dashboard-filter">
           <div className="project-filter">
             <Icon name="LayoutDashboard" size={17} />
@@ -414,10 +403,7 @@ function Dashboard({ user, notify, onLogout }) {
             })}
             <button
               className="new-project-card"
-              onClick={() => {
-                setName("");
-                setCreate(true);
-              }}
+              disabled={busy} onClick={() => make()}
             >
               <span>
                 <Icon name="Plus" size={24} />
@@ -437,60 +423,6 @@ function Dashboard({ user, notify, onLogout }) {
           </span>
         </div>
       </div>
-      {create && (
-        <Modal
-          title="A new beginning."
-          onClose={() => {
-            if (!busy) setCreate(false);
-          }}
-        >
-          <form onSubmit={make}>
-            <Field label="Project name">
-              <input
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="What are you working on?"
-                required
-                maxLength={100}
-              />
-            </Field>
-            <Field label="Start from">
-              <div className="template-options">
-                <button
-                  type="button"
-                  className={template === "blank" ? "selected" : ""}
-                  onClick={() => setTemplate("blank")}
-                >
-                  <Icon name="Square" size={24} />
-                  <strong>Blank canvas</strong>
-                  <small>Make it your own.</small>
-                </button>
-                <button
-                  type="button"
-                  className={template === "sample" ? "selected" : ""}
-                  onClick={() => setTemplate("sample")}
-                >
-                  <Icon name="Layers" size={24} />
-                  <strong>Sample board</strong>
-                  <small>Explore what’s possible.</small>
-                </button>
-              </div>
-            </Field>
-            <button
-              className="btn primary full"
-              disabled={!name.trim() || busy}
-            >
-              {busy ? (
-                <Icon name="Loader2" className="spin" size={16} />
-              ) : (
-                <Icon name="Plus" size={16} />
-              )}{" "}
-              Create project
-            </button>
-          </form>
-        </Modal>
-      )}
       {deleting && (
         <Modal
           title="Delete this project?"

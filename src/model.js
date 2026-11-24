@@ -32,6 +32,7 @@ export function safeUrl(value) {
 export function blankBoard(name = "Untitled project") {
   return {
     version: 2,
+    showViewNavigation: false,
     name,
     groups: [],
     blocks: [],

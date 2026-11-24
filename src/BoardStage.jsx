@@ -632,7 +632,7 @@ export default function BoardStage({
                       }}
                     >
                       {block.link.label}
-                      <Icon name="ExternalLink" size={16} />
+                      {block.link.showIcon!==false&&<Icon name="ExternalLink" size={16} />}
                     </a>
 
                   </div>
