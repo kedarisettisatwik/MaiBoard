@@ -1,0 +1,55 @@
+name: Deploy MaiBoard to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build with Firebase environment
+        env:
+          FIREBASE_ENV: ${{ secrets.FIREBASE_ENV }}
+          GITHUB_PAGES: 'true'
+        shell: bash
+        run: |
+          if [ -z "$FIREBASE_ENV" ]; then
+            echo 'Set the FIREBASE_ENV repository secret using .env.example before deploying.'
+            exit 1
+          fi
+          printf '%s\n' "$FIREBASE_ENV" > .env.production.local
+          trap 'rm -f .env.production.local' EXIT
+          npm run build
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

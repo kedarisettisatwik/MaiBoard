@@ -5,3 +5,5 @@ dist/
 *.local
 *.log
 .env
+.env.*
+!.env.example

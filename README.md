@@ -19,16 +19,29 @@ Source repository: [kedarisettisatwik/MaiBoard](https://github.com/kedarisettisa
 
 Hiding or selecting a view changes visual presentation, not data-access permissions. Published snapshots contain the entire multi-view board; do not use hidden blocks or inactive views to store data that must remain private from presentation visitors.
 
-React + Vite visual project workspace using Firebase Authentication, Cloud Firestore, and Cloud Storage. The supplied Firebase web configuration lives in `src/firebase.js`. Private access is enforced by `firestore.rules` and `storage.rules`.
+React + Vite visual project workspace using Firebase Authentication, Cloud Firestore, and Cloud Storage. Firebase web configuration is read from Vite environment variables in `src/firebase.js`; no configuration values are hardcoded there. Private access is enforced by `firestore.rules` and `storage.rules`.
 
 ## Run
 
 ```sh
 npm ci
+# Copy .env.example to .env.local and fill in the Firebase web configuration
 npm run dev
 ```
 
 Open the Vite URL, normally http://localhost:5173. `#/demo` is an interactive, unsaved playground requiring no account. `npm test` verifies CSV parsing, table changes, chart calculations, safe links, and publication privacy. `npm run build` produces `dist/`.
+
+
+## GitHub Pages deployment
+
+The public website target is https://kedarisettisatwik.github.io/MaiBoard/. The hash routes work under the repository path, including signup, published boards and private Live mode. This URL becomes active after GitHub Pages is enabled and the deployment succeeds.
+
+1. In the repository Settings → Secrets and variables → Actions, create a repository secret named FIREBASE_ENV. Its value is the complete contents of your filled .env.local, using the six names shown in .env.example. Do not commit this file.
+2. In Settings → Pages → Build and deployment, choose GitHub Actions.
+3. Push to master or run Deploy MaiBoard to GitHub Pages under Actions. The workflow installs dependencies, runs tests, validates required configuration, builds with /MaiBoard/ as its base path, and deploys dist.
+4. Enable Firebase Email/Password authentication and add kedarisettisatwik.github.io to Authentication → Settings → Authorized domains. Create Firestore and Storage and deploy this repository's rules.
+
+.env.local and all .env.* files are ignored except the empty .env.example template. The workflow creates a temporary .env.production.local from the GitHub secret and removes it after the build. VITE_ configuration is necessarily included in browser JavaScript; Firebase web API keys identify the project and are not server credentials. Access is protected by Firebase Authentication and the included Security Rules. Never put service-account keys or other server secrets in VITE_ variables.
 
 ## Firebase setup required
 
@@ -84,7 +97,7 @@ Update `storage.cors.json` when the production origin changes.
 - Editable table titles, headers and values; add/delete rows/columns; import/replace CSV within a table.
 - Live reports linked to selected table columns: pie chart, signed bar chart and numeric histogram, including configurable bins and invalid-value notices.
 - Solid, dotted or dashed connectors; color, thickness, curves and arrowheads at either or both ends.
-- Present previews the board. Publish creates a read-only snapshot URL; republish updates it; unpublish revokes future reads. Viewing preserves interactive tabs, reports and hyperlinks.
+- Publish creates a read-only snapshot URL; republish updates it; unpublish revokes future reads. Viewing preserves interactive tabs, reports and hyperlinks.
 - Serialized Firestore autosave, status/retry messages and a browser draft for recovery after interrupted/failed saves.
 
 ## Data and limits

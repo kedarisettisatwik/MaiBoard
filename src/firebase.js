@@ -24,12 +24,12 @@ import {
 } from "firebase/storage";
 import { boardBytes, publishSnapshot, uid, appendLiveRow } from "./model";
 export const firebaseConfig = {
-  apiKey: "AIzaSyBW6rdJqvrYW2eQwo7QsAxfpczf66I027Y",
-  authDomain: "maiboard-d0af8.firebaseapp.com",
-  projectId: "maiboard-d0af8",
-  storageBucket: "maiboard-d0af8.firebasestorage.app",
-  messagingSenderId: "606822562670",
-  appId: "1:606822562670:web:1b3194f571841fb2a81f7f",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 export const app = initializeApp(firebaseConfig),
   auth = getAuth(app),
