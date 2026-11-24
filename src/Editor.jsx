@@ -274,7 +274,8 @@ export default function Editor({
             : type === "report"
               ? 360
               : 290;
-    if (["section", "image", "kanban"].includes(type)) b.h = newBlock(type).h;
+    if (["section", "image", "kanban", "filter"].includes(type)) b.h = newBlock(type).h;
+    if(type==='filter'){const table=boardRef.current.blocks.find(b=>b.type==='table');if(table)b.filter={...b.filter,tableId:table.id,columnId:table.table.columns[0]?.id||''};}
     if (type === "report") {
       const t = boardRef.current.blocks.find((b) => b.type === "table");
       if (t) {
@@ -990,6 +991,7 @@ export default function Editor({
                   onClick={() => add("report")}
                 />
                 <Tool icon="LayoutDashboard" title="Report card" onClick={()=>add("report",null,null,"card")}/>
+                <Tool icon="Settings2" title="Filter block" onClick={()=>add("filter")}/>
                 <Tool
                   icon="Image"
                   title="Image block"

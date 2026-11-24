@@ -54,6 +54,7 @@ export function newBlock(type, x = 100, y = 100) {
         tabs: "Tabbed content",
         button: "Link button",
         report: "Report",
+        filter: "Filter",
       }[type] || "Block",
     x,
     y,
@@ -111,6 +112,7 @@ export function newBlock(type, x = 100, y = 100) {
       valueColumn: "",
       bins: 6,
     };
+  if(type==='filter'){b.w=320;b.h=175;b.filter={tableId:'',columnId:'',mode:'text',applyToReports:false,label:''};}
   if (type === "image") {
     b.name = "Image";
     b.image = { src: "", alt: "", fit: "contain" };
@@ -281,6 +283,7 @@ export function duplicateBlock(board, id) {
       }
       if (map.has(b.parentId)) c.parentId = map.get(b.parentId);
       if (map.has(b.tabParentId)) c.tabParentId = map.get(b.tabParentId);
+      if(c.filter?.tableId&&map.has(c.filter.tableId))c.filter.tableId=map.get(c.filter.tableId);
       if (c.report?.tableId && map.has(c.report.tableId))
         c.report.tableId = map.get(c.report.tableId);
       if (c.report?.kanbanId && map.has(c.report.kanbanId))
@@ -728,6 +731,7 @@ function cloneIntoView(board, ids, rootIds, targetViewId) {
         if (map.has(b.parentId)) c.parentId = map.get(b.parentId);
         if (map.has(b.tabParentId)) c.tabParentId = map.get(b.tabParentId);
       }
+      if(c.filter?.tableId&&map.has(c.filter.tableId))c.filter.tableId=map.get(c.filter.tableId);
       if (c.report?.tableId && map.has(c.report.tableId))
         c.report.tableId = map.get(c.report.tableId);
       if (c.report?.kanbanId && map.has(c.report.kanbanId))

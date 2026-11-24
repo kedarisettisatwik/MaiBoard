@@ -248,6 +248,7 @@ export const typeIcons = {
   tabs: "PanelsTopLeft",
   button: "Link2",
   report: "BarChart3",
+  filter: "Settings2",
   image: "Image",
   section: "RectangleHorizontal",
   kanban: "Columns3",

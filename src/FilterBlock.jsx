@@ -1,0 +1,7 @@
+import React from 'react';
+export default function FilterBlock({block,blocks,value={},onChange}){
+  const config=block.filter||{},table=blocks.find(b=>b.type==='table'&&b.id===config.tableId),column=table?.table.columns.find(c=>c.id===config.columnId);
+  if(!column)return <div className="filter-block-content"><p>Select a table and column in Properties.</p></div>;
+  const options=[...new Set([...(column.options||[]),...table.table.rows.map(row=>row[table.table.columns.indexOf(column)]).filter(Boolean)])];
+  return <div className="filter-block-content"><label>{config.label||column.name}{config.mode==='date'?<div className="filter-date-fields"><input aria-label={`${block.name} from`} type="date" value={value.from||''} onChange={e=>onChange({...value,from:e.target.value})}/><input aria-label={`${block.name} to`} type="date" value={value.to||''} onChange={e=>onChange({...value,to:e.target.value})}/></div>:config.mode==='dropdown'?<select aria-label={`Filter ${config.label||column.name}`} value={value.value||''} onChange={e=>onChange({value:e.target.value})}><option value="">All</option>{options.map(v=><option key={v}>{v}</option>)}</select>:<input aria-label={`Filter ${config.label||column.name}`} placeholder={config.placeholder||'Search…'} value={value.value||''} onChange={e=>onChange({value:e.target.value})}/>}</label><button className="text-button" onClick={()=>onChange({})}>Clear</button></div>;
+}
