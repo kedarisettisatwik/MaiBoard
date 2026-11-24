@@ -140,3 +140,6 @@ Layout and pagination: filters without caption/Clear can shrink to 80px in both 
 
 Border color now uses the same color input, custom hex field and preset swatches (including transparent) as Background. Table Properties → Pagination position offers Top right, Top left, Top middle, Bottom right, Bottom left and Bottom middle. The default remains Bottom right, and the chosen position is preserved in published and Live modes.
 
+
+Block headers are hidden by default in both Live and published views. Enable Show header in Live / Publish in a block's Properties to show its name/header there. Editor headers remain available for editing and dragging (buttons retain their bare editor appearance). This also applies to blocks nested in tabs and sections.
+

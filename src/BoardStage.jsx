@@ -521,7 +521,7 @@ export default function BoardStage({
               <article
                 data-block={block.id}
                 key={block.id}
-                className={`canvas-block type-${block.type} ${locked ? "locked-block" : ""} ${active && !readOnly ? "selected" : ""}`}
+                className={`canvas-block type-${block.type} ${readOnly&&block.showHeaderInLive!==true?'header-hidden':''} ${locked ? "locked-block" : ""} ${active && !readOnly ? "selected" : ""}`}
                 style={{
                   left: block.x,
                   top: block.y,
@@ -537,7 +537,7 @@ export default function BoardStage({
                   fontSize: s.fontSize,
                 }}
               >
-                {block.type!=="button"&&!(readOnly&&block.report?.kind==='card')&&<div className="block-drag">
+                {(readOnly?block.showHeaderInLive===true:block.type!=="button")&&<div className="block-drag">
                   <span className="block-type-icon">
                     <Icon name={typeIcons[block.type]} size={15} />
                   </span>

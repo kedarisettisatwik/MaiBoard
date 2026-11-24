@@ -148,6 +148,7 @@ export default function Properties({
                 />
               </Field>
               <div className="field-pair">
+                <label className="live-header-option"><input type="checkbox" checked={block.showHeaderInLive===true} onChange={e=>update({showHeaderInLive:e.target.checked})}/> Show header in Live / Publish</label>
                 {number(
                   "Width",
                   block.w,
