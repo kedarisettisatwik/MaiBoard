@@ -137,3 +137,6 @@ Report-specific filter responses replace the filter-level Apply to reports switc
 
 Layout and pagination: filters without caption/Clear can shrink to 80px in both resize handles and Height Properties (140px minimum width), with compact padding; optional caption/Clear raises the minimum. New filters start compact. Tables paginate by default at 10 records per page. Table Properties exposes Enable pagination and Records per page (1–200); page controls work in editor, published and Live modes. Pagination affects rendered rows only, never report calculations. Changing filters/page size resets to page 1; row actions retain original indexes. The home sample gallery now shows only Blank canvas, Team delivery, Budget review, and Employee onboarding; prior sample links remain available. Border color includes Transparent.
 
+
+Border color now uses the same color input, custom hex field and preset swatches (including transparent) as Background. Table Properties → Pagination position offers Top right, Top left, Top middle, Bottom right, Bottom left and Bottom middle. The default remains Bottom right, and the chosen position is preserved in published and Live modes.
+

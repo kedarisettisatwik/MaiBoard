@@ -43,8 +43,9 @@ export default function Properties({
 }) {
   const block = board.blocks.find((b) => b.id === selected),
     edge = board.edges.find((e) => e.id === selected),
-    [column, setColumn] = useState(""),[backgroundDraft,setBackgroundDraft]=useState('');
+    [column, setColumn] = useState(""),[backgroundDraft,setBackgroundDraft]=useState(''),[borderDraft,setBorderDraft]=useState('');
   useEffect(()=>setBackgroundDraft(block?.style?.background||defaultStyle.background),[selected,block?.style?.background]);
+  useEffect(()=>setBorderDraft(block?.style?.borderColor||defaultStyle.borderColor),[selected,block?.style?.borderColor]);
   if (!block && !edge)
     return (
       <aside className="properties-panel">
@@ -239,9 +240,10 @@ export default function Properties({
                       style({ borderColor: e.target.value }, "border-color")
                     }
                   />
-                  <span>{s.borderColor.toUpperCase()}</span><button type="button" className="border-transparent-option" aria-label="Transparent border" aria-pressed={s.borderColor==='transparent'} onClick={()=>style({borderColor:'transparent'})}>Transparent</button>
+                  <input className="custom-color-input" aria-label="Custom border color" value={borderDraft} onChange={e=>{const value=e.target.value.trim();setBorderDraft(e.target.value);if(isBackgroundColor(value))style({borderColor:value},'border-color')}} onBlur={()=>{if(!isBackgroundColor(borderDraft))setBorderDraft(s.borderColor)}} placeholder="#2563eb or transparent"/>
                 </div>
               </Field>
+              <div className="color-swatches">{colorPresets.map(c=><button key={c} style={{background:c}} data-transparent={c==='transparent'||undefined} className={s.borderColor===c?'chosen':''} title={`Border ${c}`} aria-label={`Border ${c}`} onClick={()=>style({borderColor:c},'border-color')}/>)}</div>
               <div className="field-pair">
                 {number(
                   "Padding",
@@ -402,7 +404,7 @@ export default function Properties({
                     <Icon name="Plus" size={15} /> Add column
                   </button>
                 </div>
-                <div inert={locked?true:undefined}><h3>Pagination</h3><label><input type="checkbox" checked={block.table.pagination!==false} onChange={e=>update({table:{...block.table,pagination:e.target.checked}})}/> Enable pagination</label>{block.table.pagination!==false&&<Field label="Records per page"><input type="number" min="1" max="200" value={block.table.pageSize||10} onChange={e=>update({table:{...block.table,pageSize:Math.max(1,Math.min(200,+e.target.value||10))}})}/></Field>}<ColumnSettings table={block.table} update={update}/></div>
+                <div inert={locked?true:undefined}><h3>Pagination</h3><label><input type="checkbox" checked={block.table.pagination!==false} onChange={e=>update({table:{...block.table,pagination:e.target.checked}})}/> Enable pagination</label>{block.table.pagination!==false&&<Field label="Records per page"><input type="number" min="1" max="200" value={block.table.pageSize||10} onChange={e=>update({table:{...block.table,pageSize:Math.max(1,Math.min(200,+e.target.value||10))}})}/></Field>}{block.table.pagination!==false&&<Field label="Pagination position"><select value={block.table.paginationPosition||'bottom-right'} onChange={e=>update({table:{...block.table,paginationPosition:e.target.value}})}>{[['top-right','Top right'],['top-left','Top left'],['top-middle','Top middle'],['bottom-right','Bottom right'],['bottom-left','Bottom left'],['bottom-middle','Bottom middle']].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></Field>}<ColumnSettings table={block.table} update={update}/></div>
                 <Field label="Delete a column">
                   <select
                     value={column}

@@ -40,8 +40,11 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRo
   const { columns, rows } = block.table;
   const [page,setPage]=useState(1),matching=visibleRows||rows.map((row,index)=>({row,index})),pageData=paginateRows(matching,page,block.table.pageSize,block.table.pagination!==false),rowKey=matching.map(x=>x.index).join(',');
   useEffect(()=>setPage(1),[rowKey,block.table.pageSize,block.table.pagination]);
+  const paginationAtTop=(block.table.paginationPosition||'bottom-right').startsWith('top-');
+  const pagination=block.table.pagination!==false&&<nav className="table-pagination" data-position={block.table.paginationPosition||'bottom-right'} aria-label={`Pages for ${block.name}`}><button aria-label="Previous table page" disabled={pageData.page===1} onClick={()=>setPage(pageData.page-1)}>Previous</button>{Array.from({length:Math.min(5,pageData.pages)},(_,i)=>Math.max(1,Math.min(pageData.page-2,pageData.pages-4))+i).map(p=><button key={p} aria-label={`Table page ${p}`} aria-current={p===pageData.page?'page':undefined} onClick={()=>setPage(p)}>{p}</button>)}<span>Page {pageData.page} of {pageData.pages}</span><button aria-label="Next table page" disabled={pageData.page===pageData.pages} onClick={()=>setPage(pageData.page+1)}>Next</button></nav>;
   return (
     <>
+      {paginationAtTop&&pagination}
       <div className="table-scroll">
         <table className="data-table">
           <thead>
@@ -162,7 +165,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRo
           </>
         )}
       </div>
-      {block.table.pagination!==false&&<nav className="table-pagination" aria-label={`Pages for ${block.name}`}><button aria-label="Previous table page" disabled={pageData.page===1} onClick={()=>setPage(pageData.page-1)}>Previous</button>{Array.from({length:Math.min(5,pageData.pages)},(_,i)=>Math.max(1,Math.min(pageData.page-2,pageData.pages-4))+i).map(p=><button key={p} aria-label={`Table page ${p}`} aria-current={p===pageData.page?'page':undefined} onClick={()=>setPage(p)}>{p}</button>)}<span>Page {pageData.page} of {pageData.pages}</span><button aria-label="Next table page" disabled={pageData.page===pageData.pages} onClick={()=>setPage(pageData.page+1)}>Next</button></nav>}
+      {!paginationAtTop&&pagination}
     </>
   );
 }

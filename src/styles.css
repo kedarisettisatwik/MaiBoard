@@ -4007,3 +4007,4 @@ mark {
 
 .type-filter .block-drag{height:30px}.type-filter .filter-block-content{height:calc(100% - 30px)}
 
+.table-pagination[data-position$="-left"]{justify-content:flex-start}.table-pagination[data-position$="-middle"]{justify-content:center}.table-pagination[data-position$="-right"]{justify-content:flex-end}.table-pagination[data-position^="top-"]{border-top:0;border-bottom:1px solid #e2e8f0}
