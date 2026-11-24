@@ -43,6 +43,7 @@ export function blankBoard(name = "Untitled project") {
     startViewId: "view-1",
   };
 }
+export function minimumBlockHeight(block){return block?.type==='filter'?80+(block.filter?.label?22:0)+(block.filter?.showClear?24:0):block?.type==='button'?44:160;}
 export function newBlock(type, x = 100, y = 100) {
   let b = {
     id: uid(),
@@ -76,6 +77,7 @@ export function newBlock(type, x = 100, y = 100) {
     b.html = "<h2>A new idea.</h2><p>Start writing. Make it your own.</p>";
   if (type === "table")
     b.table = {
+      pagination:true,pageSize:10,
       columns: [
         { id: uid(), name: "Category" },
         { id: uid(), name: "Value" },
@@ -113,7 +115,7 @@ export function newBlock(type, x = 100, y = 100) {
       bins: 6,
       respondToFilters: [],
     };
-  if(type==='filter'){b.w=320;b.h=175;b.filter={tableId:'',columnId:'',mode:'text',label:''};}
+  if(type==='filter'){b.w=320;b.h=80;b.filter={tableId:'',columnId:'',mode:'text',label:''};}
   if (type === "image") {
     b.name = "Image";
     b.image = { src: "", alt: "", fit: "contain" };
@@ -560,7 +562,7 @@ export function updateBoardBlock(board, id, patch) {
   }
   let result = normalizeContainment({
     ...board,
-    blocks: board.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+    blocks: board.blocks.map((b) => {if(b.id!==id)return b;const next={...b,...patch};if(next.type==='filter')next.h=Math.max(minimumBlockHeight(next),next.h||80);return next;}),
   });
   const actual = result.blocks.find((b) => b.id === id),
     dx = actual.x - old.x,

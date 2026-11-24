@@ -13,3 +13,4 @@ export function filterTableByBlocks(tableBlock,blocks,values={},selectedIds=null
   return rows;
 }
 export function reportBlocksFor(report,blocks,values){const selected=report.respondToFilters??blocks.filter(b=>b.type==='filter'&&b.filter?.applyToReports===true).map(b=>b.id);return blocks.map(b=>b.type==='table'?{...b,table:{...b.table,rows:filterTableByBlocks(b,blocks,values,selected).map(x=>x.row)}}:b);}
+export function paginateRows(rows,page=1,pageSize=10,enabled=true){const size=Math.max(1,Math.min(200,Math.floor(Number(pageSize)||10))),count=enabled?Math.max(1,Math.ceil(rows.length/size)):1,current=Math.max(1,Math.min(count,Math.floor(Number(page)||1)));return{rows:enabled?rows.slice((current-1)*size,current*size):rows,page:current,pages:count,size};}

@@ -1,13 +1,14 @@
 import {blankBoard,newBlock,uid} from './model.js';
-export const sampleProjects=[
+const allSamples=[
   {id:'tickets',name:'Tickets dashboard',icon:'Table2',description:'Ticket filters, NASHCM completion, monthly closures, client suggestions and priority colors.'},
   {id:'reporting',name:'Table report',icon:'BarChart3',description:'Sales data, linked charts, and report cards for totals, averages and ranges.'},
   {id:'onboarding',name:'Employee onboarding',icon:'PanelsTopLeft',description:'A guided welcome, first-day checklist, and first-week plan across tabs.'},
   {id:'delivery',name:'Team delivery',icon:'Columns3',description:'A Kanban board, workload report, and a simple team working agreement.'},
-  {id:'budget',name:'Budget overview',icon:'Table2',description:'Track planned and actual spending with category charts and summary cards.'},
+  {id:'budget',name:'Budget review',icon:'Table2',description:'Track planned and actual spending with category charts and summary cards.'},
 ];
+export const sampleProjects=['delivery','budget','onboarding'].map(id=>allSamples.find(x=>x.id===id));
 export function createSample(id){
-  const meta=sampleProjects.find(x=>x.id===id);if(!meta)throw Error('Unknown sample project');
+  const meta=allSamples.find(x=>x.id===id);if(!meta)throw Error('Unknown sample project');
   const board=blankBoard(meta.name),add=(type,name,x,y,w,h)=>{const b=newBlock(type,x,y);Object.assign(b,{name,viewId:'view-1',...(w?{w}:{}),...(h?{h}:{})});board.blocks.push(b);return b;};
   const note=(title,html,x,y,w=380,h=230)=>{const b=add('text',title,x,y,w,h);b.html=html;return b;};
   const report=(table,kind,title,x,y,metric)=>{const b=add('report',title,x,y,kind==='card'?250:470,kind==='card'?195:350);b.report={...b.report,respondToFilters:'all',sourceType:'table',tableId:table.id,labelColumn:table.table.columns[0].id,valueColumn:table.table.columns[1].id,kind,metric:metric||'max',rangeMin:'100',rangeMax:'300',decimals:0};return b;};

@@ -3,11 +3,12 @@ import { Icon, IconButton, typeIcons } from "./ui";
 import RichText, { SafeHTML } from "./RichText";
 import Report from "./Report";
 import {CellInput} from "./TableControls";
-import {filterTableByBlocks,reportBlocksFor} from "./tableFeatures";
+import {filterTableByBlocks,reportBlocksFor,paginateRows} from "./tableFeatures";
 import FilterBlock from "./FilterBlock";
 import { TabsBlock, ImageBlock, KanbanBlock } from "./ExtendedBlocks";
 import {
   safeUrl,
+  minimumBlockHeight,
   defaultStyle,
   uid,
   isBlockVisible,
@@ -37,6 +38,8 @@ export function edgePath(edge, blocks) {
 }
 function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRows }) {
   const { columns, rows } = block.table;
+  const [page,setPage]=useState(1),matching=visibleRows||rows.map((row,index)=>({row,index})),pageData=paginateRows(matching,page,block.table.pageSize,block.table.pagination!==false),rowKey=matching.map(x=>x.index).join(',');
+  useEffect(()=>setPage(1),[rowKey,block.table.pageSize,block.table.pagination]);
   return (
     <>
       <div className="table-scroll">
@@ -74,7 +77,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRo
             </tr>
           </thead>
           <tbody>
-            {(visibleRows||rows.map((row,index)=>({row,index}))).map(({row:r,index:i}) => (
+            {pageData.rows.map(({row:r,index:i}) => (
               <tr key={i}>
                 {columns.map((c, j) => (
                   <td key={c.id} style={{color:c.colors?.[r[j]]||undefined}}>
@@ -139,7 +142,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRo
               onClick={() =>
                 update(
                   {
-                    table: {
+                    table: { ...block.table,
                       columns: [
                         ...columns,
                         { id: uid(), name: `Column ${columns.length + 1}` },
@@ -159,6 +162,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRo
           </>
         )}
       </div>
+      {block.table.pagination!==false&&<nav className="table-pagination" aria-label={`Pages for ${block.name}`}><button aria-label="Previous table page" disabled={pageData.page===1} onClick={()=>setPage(pageData.page-1)}>Previous</button>{Array.from({length:Math.min(5,pageData.pages)},(_,i)=>Math.max(1,Math.min(pageData.page-2,pageData.pages-4))+i).map(p=><button key={p} aria-label={`Table page ${p}`} aria-current={p===pageData.page?'page':undefined} onClick={()=>setPage(p)}>{p}</button>)}<span>Page {pageData.page} of {pageData.pages}</span><button aria-label="Next table page" disabled={pageData.page===pageData.pages} onClick={()=>setPage(pageData.page+1)}>Next</button></nav>}
     </>
   );
 }
@@ -358,8 +362,8 @@ export default function BoardStage({
       onUpdate?.(
         d.id,
         {
-          w: Math.max(d.type==="button"?80:260, Math.round(d.w + x / d.z)),
-          h: Math.max(d.type==="button"?44:160, Math.round(d.h + y / d.z)),
+          w: Math.max(d.type==="button"?80:d.type==="filter"?140:260, Math.round(d.w + x / d.z)),
+          h: Math.max(minimumBlockHeight(board.blocks.find(b=>b.id===d.id)), Math.round(d.h + y / d.z)),
         },
         false,
       );

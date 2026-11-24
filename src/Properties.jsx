@@ -7,6 +7,7 @@ import React, { useState,useEffect } from "react";
 import { Icon, IconButton, Field, typeIcons } from "./ui";
 import {
   defaultStyle,
+  minimumBlockHeight,
   fonts,
   uid,
   deleteColumn,
@@ -150,14 +151,14 @@ export default function Properties({
                   "Width",
                   block.w,
                   (w) => update({ w }, "width"),
-                  260,
+                  block.type==='filter'?140:260,
                   2400,
                 )}
                 {number(
                   "Height",
                   block.h || 260,
                   (h) => update({ h }, "height"),
-                  160,
+                  minimumBlockHeight(block),
                   2400,
                 )}
               </div>
@@ -233,12 +234,12 @@ export default function Properties({
                   <input
                     type="color"
                     aria-label="Border color"
-                    value={s.borderColor}
+                    value={/^#[0-9a-f]{6}$/i.test(s.borderColor)?s.borderColor:'#ffffff'}
                     onChange={(e) =>
                       style({ borderColor: e.target.value }, "border-color")
                     }
                   />
-                  <span>{s.borderColor.toUpperCase()}</span>
+                  <span>{s.borderColor.toUpperCase()}</span><button type="button" className="border-transparent-option" aria-label="Transparent border" aria-pressed={s.borderColor==='transparent'} onClick={()=>style({borderColor:'transparent'})}>Transparent</button>
                 </div>
               </Field>
               <div className="field-pair">
@@ -383,8 +384,8 @@ export default function Properties({
                     onClick={() =>
                       update(
                         {
-                          table: {
-                            columns: [
+                          table: { ...block.table,
+                      columns: [
                               ...block.table.columns,
                               {
                                 id: uid(),
@@ -401,7 +402,7 @@ export default function Properties({
                     <Icon name="Plus" size={15} /> Add column
                   </button>
                 </div>
-                <div inert={locked?true:undefined}><ColumnSettings table={block.table} update={update}/></div>
+                <div inert={locked?true:undefined}><h3>Pagination</h3><label><input type="checkbox" checked={block.table.pagination!==false} onChange={e=>update({table:{...block.table,pagination:e.target.checked}})}/> Enable pagination</label>{block.table.pagination!==false&&<Field label="Records per page"><input type="number" min="1" max="200" value={block.table.pageSize||10} onChange={e=>update({table:{...block.table,pageSize:Math.max(1,Math.min(200,+e.target.value||10))}})}/></Field>}<ColumnSettings table={block.table} update={update}/></div>
                 <Field label="Delete a column">
                   <select
                     value={column}
