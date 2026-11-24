@@ -23,7 +23,6 @@ import {sampleProjects,createSample} from "./templates";
 import './compactCards.css';
 import './collaboration.css';
 import {NewProjectModal,EditorSession,VerifyEmail} from './Sharing';
-import {projectImport} from './collaboration';
 export const openProjectTab=path=>window.open(`${location.origin}${location.pathname}#${path}`,'_blank','noopener,noreferrer');
 const Editor = lazy(() => import("./Editor")),
   Viewer = lazy(() => import("./Viewer"));
@@ -325,7 +324,7 @@ function Dashboard({ user, notify, onLogout }) {
             <h1>Your projects.</h1>
             <p>Everything you’re thinking about, brought together.</p>
           </div>
-          <button className="btn" onClick={()=>document.getElementById("import-new-project").click()}>Import JSON</button><input id="import-new-project" type="file" accept=".json,application/json" hidden onChange={async e=>{try{if(e.target.files[0])setCreating(projectImport(await e.target.files[0].text()));}catch(error){notify(error.message);}finally{e.target.value="";}}}/><button
+          <button
             className="btn primary"
             disabled={busy} onClick={() => make()}
           >
