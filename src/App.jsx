@@ -74,7 +74,7 @@ export default function App() {
             user={user}
             notify={notify}
             onExit={() => navigate("/")}
-            onSignIn={() => setAuthMode("signup")}
+            onSignIn={() => setAuthMode("signin")}
           />
         ) : !authReady ? (
           <Spinner />
@@ -332,7 +332,7 @@ function Dashboard({ user, notify, onLogout }) {
         </div>
         <section className="sample-gallery" aria-label="Sample projects">
           <div className="sample-heading"><div><h2>Start with an example</h2><p>Explore a ready-made board, then save your own copy.</p></div><span>Sample projects</span></div>
-          <div className="sample-grid">{sampleProjects.map(sample=><article className="sample-card" key={sample.id}><div className="sample-icon"><Icon name={sample.icon} size={24}/></div><h3>{sample.name}</h3><p>{sample.description}</p><div><button className="btn" onClick={()=>navigate('/sample/'+sample.id)}>Preview</button><button className="btn primary" disabled={busy} onClick={()=>make(sample.id)}>Use sample</button></div></article>)}</div>
+          <div className="sample-grid"><button className="sample-image-card blank-sample" disabled={busy} onClick={()=>make()}><Icon name="Plus" size={36}/><strong>Start with a blank canvas</strong></button>{sampleProjects.map(sample=><button className="sample-image-card" key={sample.id} aria-label={`Preview ${sample.name}`} onClick={()=>navigate('/sample/'+sample.id)}><img src={import.meta.env.BASE_URL+'samples/'+sample.id+'.svg'} alt={sample.name}/></button>)}</div>
         </section>
         <div className="dashboard-filter">
           <div className="project-filter">
@@ -401,16 +401,7 @@ function Dashboard({ user, notify, onLogout }) {
                 </article>
               );
             })}
-            <button
-              className="new-project-card"
-              disabled={busy} onClick={() => make()}
-            >
-              <span>
-                <Icon name="Plus" size={24} />
-              </span>
-              <strong>Start with a blank canvas</strong>
-              <p>Give your next idea some room.</p>
-            </button>
+
           </div>
         )}
         {!loading && search && !filtered.length && (

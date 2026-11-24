@@ -677,18 +677,21 @@ export default function Editor({
               </button>
               <button
                 className="btn primary"
+                disabled={busy}
                 onClick={async () => {
                   if (user) {
+                    if(busy)return;
+                    setBusy(true);
                     try {
                       const projectId = await createProject(user.uid, board);
                       location.hash = `/project/${projectId}`;
                     } catch (e) {
                       notify(readableError(e));
-                    }
+                    } finally {setBusy(false);}
                   } else onSignIn();
                 }}
               >
-                {user ? "Save to workspace" : "Sign up to save"}
+                {user ? "Save project" : "Sign in to save"}
               </button>
             </>
           ) : (

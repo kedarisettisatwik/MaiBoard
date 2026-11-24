@@ -5,7 +5,7 @@ import { chartColor } from './chartColors';
 import { reportCardData } from './analytics';
 function ReportCard({block,blocks}){
   const result=reportCardData(block.report,blocks),digits=Math.max(0,Math.min(6,Number(block.report.decimals)||0));
-  return <div className="report-card-content" role="figure" aria-label={`${block.name}: ${result.value??result.reason}`}><span className="live-tag">{result.label||'Report card'}</span>{result.value===undefined?<p>{result.reason}</p>:<><strong className="report-card-value" style={{color:block.report.cardColor||'#2563eb'}}>{block.report.prefix||''}{Intl.NumberFormat('en',{minimumFractionDigits:digits,maximumFractionDigits:digits}).format(result.value)}{block.report.suffix||''}</strong><span>{result.column||'All records'}</span><small>From {result.source}{result.skipped>0?` · ${result.skipped} nonnumeric values omitted`:''}</small></>}</div>;
+  return <div className="report-card-content" role="figure" aria-label={`${block.name}: ${result.value??result.reason}`}>{result.value===undefined?<p>{result.reason}</p>:<><strong className="report-card-value" style={{color:block.report.cardColor||'#2563eb',fontSize:(block.report.valueFontSize||44)+'px'}}>{block.report.prefix||''}{Intl.NumberFormat('en',{minimumFractionDigits:digits,maximumFractionDigits:digits}).format(result.value)}{block.report.suffix||(result.percent?'%':'')}</strong><span>{result.column||'All records'}</span><small>From {result.source}{result.skipped>0?` · ${result.skipped} blank or invalid values omitted`:''}</small></>}</div>;
 }
 export default function Report({ block, blocks }) {
   const result = reportData(block, blocks),

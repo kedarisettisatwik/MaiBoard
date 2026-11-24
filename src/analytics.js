@@ -1,11 +1,14 @@
 import { numeric } from './model.js';
-export const cardMetrics={max:'Maximum',min:'Minimum',average:'Average',sum:'Sum',count:'Record count',rangeCount:'Count in range',distinct:'Distinct values'};
+import {isoDate} from './tableFeatures.js';
+export const cardMetrics={max:'Maximum',min:'Minimum',average:'Average',sum:'Sum',count:'Record count',rangeCount:'Count in range',distinct:'Distinct values',filledPercent:'Filled percentage',dateCount:'Count dates in range'};
 export function reportCardData(report,blocks){
   const source=blocks.find(b=>b.type==='table'&&b.id===report.tableId);
   if(!source)return {reason:'Choose a source table in Properties.'};
   const metric=report.metric||'max',index=source.table.columns.findIndex(c=>c.id===report.valueColumn);
   if(metric==='count')return {value:source.table.rows.length,label:cardMetrics[metric],source:source.name,skipped:0};
   if(index<0)return {reason:'Choose a column in Properties.'};
+  if(metric==='filledPercent'){const filled=source.table.rows.filter(row=>String(row[index]??'').trim()!=='').length;return {value:source.table.rows.length?filled/source.table.rows.length*100:0,percent:true,source:source.name,column:source.table.columns[index].name};}
+  if(metric==='dateCount'){const from=isoDate(report.dateFrom),to=isoDate(report.dateTo);if(!from||!to||from>to)return {reason:'Choose a valid start and end date.'};const dates=source.table.rows.map(row=>isoDate(row[index])).filter(Boolean);return {value:dates.filter(d=>d>=from&&d<=to).length,source:source.name,column:source.table.columns[index].name,skipped:source.table.rows.length-dates.length};}
   if(metric==='distinct')return {value:new Set(source.table.rows.map(row=>String(row[index]??'').trim()).filter(Boolean)).size,label:cardMetrics[metric],source:source.name,skipped:0};
   const values=source.table.rows.map(row=>numeric(row[index])).filter(v=>v!==null),skipped=source.table.rows.length-values.length;
   let value;

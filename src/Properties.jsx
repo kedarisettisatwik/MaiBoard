@@ -1,6 +1,7 @@
 import { ExtraProperties } from "./ExtendedBlocks";
 import { chartColor, chartPalettes } from './chartColors';
 import {cardMetrics} from './analytics';
+import {ColumnSettings} from './TableControls';
 import React, { useState,useEffect } from "react";
 import { Icon, IconButton, Field, typeIcons } from "./ui";
 import {
@@ -398,6 +399,7 @@ export default function Properties({
                     <Icon name="Plus" size={15} /> Add column
                   </button>
                 </div>
+                <div inert={locked?true:undefined}><ColumnSettings table={block.table} update={update}/></div>
                 <Field label="Delete a column">
                   <select
                     value={column}
@@ -608,6 +610,7 @@ export default function Properties({
                       ))}
                   </select>
                 </Field>
+                {block.report.kind!=='card'&&block.report.sourceType!=='kanban'&&<Field label="Aggregation"><select value={block.report.aggregation||'sum'} onChange={e=>update({report:{...block.report,aggregation:e.target.value}})}><option value="sum">Sum values</option><option value="count">Count records by label</option></select></Field>}
                 <Field label="Chart type">
                   <select
                     value={block.report.kind}
@@ -691,6 +694,8 @@ export default function Properties({
                 {block.report.kind==='card'&&<>
                   <Field label="Calculation"><select value={block.report.metric||'max'} onChange={e=>update({report:{...block.report,metric:e.target.value}})}>{Object.entries(cardMetrics).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></Field>
                   {block.report.metric==='rangeCount'&&<><Field label="Range minimum"><input type="number" value={block.report.rangeMin??''} onChange={e=>update({report:{...block.report,rangeMin:e.target.value}})}/></Field><Field label="Range maximum"><input type="number" value={block.report.rangeMax??''} onChange={e=>update({report:{...block.report,rangeMax:e.target.value}})}/></Field><label><input type="checkbox" checked={block.report.includeMin!==false} onChange={e=>update({report:{...block.report,includeMin:e.target.checked}})}/> Include minimum</label><label><input type="checkbox" checked={block.report.includeMax!==false} onChange={e=>update({report:{...block.report,includeMax:e.target.checked}})}/> Include maximum</label></>}
+                  <Field label="Value font size"><input type="number" min="12" max="160" value={block.report.valueFontSize||44} onChange={e=>update({report:{...block.report,valueFontSize:Math.max(12,Math.min(160,+e.target.value||44))}})}/></Field>
+                  {block.report.metric==='dateCount'&&<><Field label="Date from"><input type="date" value={block.report.dateFrom||''} onChange={e=>update({report:{...block.report,dateFrom:e.target.value}})}/></Field><Field label="Date to"><input type="date" value={block.report.dateTo||''} onChange={e=>update({report:{...block.report,dateTo:e.target.value}})}/></Field></>}
                   <Field label="Decimal places"><input type="number" min="0" max="6" value={block.report.decimals||0} onChange={e=>update({report:{...block.report,decimals:Math.min(6,Math.max(0,+e.target.value))}})}/></Field>
                   <Field label="Value prefix"><input value={block.report.prefix||''} onChange={e=>update({report:{...block.report,prefix:e.target.value}})}/></Field><Field label="Value suffix"><input value={block.report.suffix||''} onChange={e=>update({report:{...block.report,suffix:e.target.value}})}/></Field>
                   <Field label="Value color"><input type="color" value={block.report.cardColor||'#2563eb'} onChange={e=>update({report:{...block.report,cardColor:e.target.value}})}/></Field>

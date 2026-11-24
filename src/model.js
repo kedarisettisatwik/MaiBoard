@@ -1,4 +1,5 @@
 import Papa from "papaparse";
+import {validCell} from './tableFeatures.js';
 export const uid = () => crypto.randomUUID();
 export const fonts = [
   "DM Sans",
@@ -340,6 +341,7 @@ export function reportData(block, blocks) {
     r = block.report,
     vi = columns.findIndex((c) => c.id === r.valueColumn),
     li = columns.findIndex((c) => c.id === r.labelColumn);
+  if(r.aggregation==='count'&&li>=0&&r.kind!=='histogram'){const totals=new Map();for(const row of rows){const name=String(row[li]||'Untitled');totals.set(name,(totals.get(name)||0)+1);}return {data:[...totals].map(([name,value])=>({name,value})),source:source.name,unit:'Records',skipped:0};}
   if (vi < 0)
     return { data: [], reason: "Choose a numeric column in Properties." };
   let skipped = 0;
@@ -801,6 +803,7 @@ export function appendLiveRow(board,blockId,values,columnIds){
   if(!block)throw Error('The table no longer exists.');
   if(!Array.isArray(values)||values.length!==block.table.columns.length||!Array.isArray(columnIds)||columnIds.length!==block.table.columns.length||columnIds.some((id,i)=>id!==block.table.columns[i]?.id))throw Error('The table columns changed. Reopen Add row and try again.');
   if(values.some(v=>typeof v!=='string'||v.length>10000))throw Error('Each cell must contain at most 10,000 characters.');
+  if(values.some((v,i)=>!validCell(block.table.columns[i],v)))throw Error('Choose an existing option for each restricted dropdown.');
   if(block.table.rows.length>=5000)throw Error('This table has reached its row limit.');
   return {...board,blocks:board.blocks.map(b=>b.id===blockId?{...b,table:{...b.table,rows:[...b.table.rows,[...values]]}}:b)};
 }

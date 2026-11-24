@@ -2,6 +2,8 @@ import React, { useRef, useEffect, useState } from "react";
 import { Icon, IconButton, typeIcons } from "./ui";
 import RichText, { SafeHTML } from "./RichText";
 import Report from "./Report";
+import {CellInput,TableFilters} from "./TableControls";
+import {filteredRows} from "./tableFeatures";
 import { TabsBlock, ImageBlock, KanbanBlock } from "./ExtendedBlocks";
 import {
   safeUrl,
@@ -32,10 +34,11 @@ export function edgePath(edge, blocks) {
     ? `M${x1},${y1} L${x2},${y2}`
     : `M${x1},${y1} C${x1 + d},${y1} ${x2 - d},${y2} ${x2},${y2}`;
 }
-function TableBlock({ block, readOnly, update, onImport, onAddLiveRow }) {
+function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, filters={}, onFilters }) {
   const { columns, rows } = block.table;
   return (
     <>
+      <TableFilters table={block.table} filters={filters} onChange={onFilters}/>
       <div className="table-scroll">
         <table className="data-table">
           <thead>
@@ -71,34 +74,14 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => (
+            {filteredRows(block.table,filters).map(({row:r,index:i}) => (
               <tr key={i}>
                 {columns.map((c, j) => (
-                  <td key={c.id}>
+                  <td key={c.id} style={{color:c.colors?.[r[j]]||undefined}}>
                     {readOnly ? (
                       <span>{r[j]}</span>
                     ) : (
-                      <input
-                        aria-label={`Row ${i + 1}, ${c.name}`}
-                        value={r[j] ?? ""}
-                        onChange={(e) =>
-                          update(
-                            {
-                              table: {
-                                ...block.table,
-                                rows: rows.map((row, k) =>
-                                  k === i
-                                    ? row.map((v, ix) =>
-                                        ix === j ? e.target.value : v,
-                                      )
-                                    : row,
-                                ),
-                              },
-                            },
-                            `cell-${i}-${j}`,
-                          )
-                        }
-                      />
+                      <CellInput column={c} label={`Row ${i+1}, ${c.name}`} value={r[j]??''} onChange={value=>update({table:{...block.table,rows:rows.map((row,k)=>k===i?row.map((v,ix)=>ix===j?value:v):row)}},`cell-${i}-${j}`)}/>
                     )}
                   </td>
                 ))}
@@ -131,7 +114,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow }) {
       </div>
       <div className="table-footer">
         <span>
-          {rows.length} rows · {columns.length} columns
+          {filteredRows(block.table,filters).length} of {rows.length} rows · {columns.length} columns
         </span>
         {readOnly && onAddLiveRow && <button onClick={()=>onAddLiveRow(block.id)}><Icon name="Plus" size={13}/> Add row</button>}
         {!readOnly && (
@@ -227,6 +210,7 @@ export default function BoardStage({
   onAddToTab,
   onTabNavigate,
   runtimeTabs = {},
+  tableFilters, onTableFilters,
   containerId = null,
   containerTabId = null,
   excludeIds = [],
@@ -237,6 +221,9 @@ export default function BoardStage({
   children,
   stageRef,
 }) {
+  const [localFilters,setLocalFilters]=useState({});
+  const filters=tableFilters||localFilters,setFilters=onTableFilters||setLocalFilters;
+  const reportBlocks=board.blocks.map(b=>b.type==='table'?{...b,table:{...b.table,rows:filteredRows(b.table,filters[b.id]).map(x=>x.row)}}:b);
   const shown = viewBlocks(
     board,
     viewId || board.startViewId || projectViews(board)[0].id,
@@ -583,9 +570,10 @@ export default function BoardStage({
                     update={update}
                     onImport={onImport}
                     onAddLiveRow={onAddLiveRow}
+                    filters={filters[block.id]||{}} onFilters={value=>setFilters(previous=>({...previous,[block.id]:value}))}
                   />
                 ) : block.type === "report" ? (
-                  <Report block={block} blocks={board.blocks} />
+                  <Report block={block} blocks={reportBlocks} />
                 ) : block.type === "button" ? (
                   <div
                     className="button-block-content"
@@ -673,6 +661,7 @@ export default function BoardStage({
                           onNavigate,
                           onTabNavigate,
                           runtimeTabs,
+                          tableFilters:filters,onTableFilters:setFilters,
                           tool,
                           readOnly,
                           interactionScale,
