@@ -6,6 +6,7 @@ export default function Layers({
   selected,
   onSelect,
   onVisibility,
+  onColumnVisibility,
   onLock,
   onDelete,
   onCopy,
@@ -139,10 +140,13 @@ export default function Layers({
         {!collapsed[b.id] && b.type === "table" && (
           <div className="layer-children">
             {b.table.columns.map((c) => (
-              <button key={c.id} onClick={() => onSelect(b.id)}>
+              <div className="column-layer-row" key={c.id}>
+              <button onClick={() => onSelect(b.id)} className={c.hidden?'column-hidden':''}>
                 <Icon name="GripVertical" size={12} />
                 <span>{c.name}</span>
               </button>
+              <IconButton icon={c.hidden?'EyeOff':'Eye'} title={`${c.hidden?'Show':'Hide'} column ${c.name}`} onClick={()=>onColumnVisibility(b.id,c.id)}/>
+              </div>
             ))}
           </div>
         )}

@@ -155,7 +155,7 @@ export default function Viewer({ id, live=false, user, onSignIn }) {
           </div>
         </BoardStage>
       )}
-      {rowTarget && <Modal title={`Add row to ${rowTarget.name}`} onClose={()=>{if(!savingRow)setRowTarget(null)}}><form onSubmit={saveRow}><p>Existing rows, columns, and other blocks stay read only.</p>{rowTarget.table.columns.map((c,i)=>c.system||(rowTarget.table.personal?.enabled&&rowTarget.table.personal.columnId===c.id)?null:<Field key={c.id} label={c.name}><CellInput column={c} label={`New row ${c.name}`} value={rowValues[i]} onChange={value=>setRowValues(values=>values.map((v,j)=>j===i?value:v))}/></Field>)}<ErrorMessage>{rowError}</ErrorMessage><button className="btn primary" disabled={savingRow}>{savingRow?'Saving…':'Add row'}</button></form></Modal>}
+      {rowTarget && <Modal title={`Add row to ${rowTarget.name}`} onClose={()=>{if(!savingRow)setRowTarget(null)}}><form onSubmit={saveRow}><p>Existing rows, columns, and other blocks stay read only.</p>{rowTarget.table.columns.map((c,i)=>c.hidden||c.system||(rowTarget.table.personal?.enabled&&rowTarget.table.personal.columnId===c.id)?null:<Field key={c.id} label={c.name}><CellInput column={c} label={`New row ${c.name}`} value={rowValues[i]} onChange={value=>setRowValues(values=>values.map((v,j)=>j===i?value:v))}/></Field>)}<ErrorMessage>{rowError}</ErrorMessage><button className="btn primary" disabled={savingRow}>{savingRow?'Saving…':'Add row'}</button></form></Modal>}
     </div>
   );
 }

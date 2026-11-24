@@ -49,7 +49,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow
         <table className="data-table">
           <thead>
             <tr>
-              {columns.map((c, i) => (
+              {columns.map((c, i) => c.hidden?null:(
                 <th key={c.id}>
                   {readOnly ? (
                     c.name
@@ -82,7 +82,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow
           <tbody>
             {pageData.rows.map(({row:r,index:i}) => (
               <tr key={i}>
-                {columns.map((c, j) => (
+                {columns.map((c, j) => c.hidden?null:(
                   <td key={c.id} style={{color:c.colors?.[r[j]]||undefined}}>
                     {readOnly||c.system ? (
                       <span>{r[j]}</span>

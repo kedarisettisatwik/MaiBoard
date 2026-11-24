@@ -820,6 +820,7 @@ export default function Editor({
       <div className="editor-body">
         {layers && !present && (
           <Layers
+            onColumnVisibility={(blockId,columnId)=>{const block=boardRef.current.blocks.find(b=>b.id===blockId);if(block?.type==='table')updateBlock(blockId,{table:{...block.table,columns:block.table.columns.map(c=>c.id===columnId?{...c,hidden:!c.hidden}:c)}});}}
             demo={demo}
             board={{
               ...board,
