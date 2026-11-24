@@ -36,7 +36,7 @@ export function edgePath(edge, blocks) {
     ? `M${x1},${y1} L${x2},${y2}`
     : `M${x1},${y1} C${x1 + d},${y1} ${x2 - d},${y2} ${x2},${y2}`;
 }
-function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRows }) {
+function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow, visibleRows }) {
   const { columns, rows } = block.table;
   const [page,setPage]=useState(1),matching=visibleRows||rows.map((row,index)=>({row,index})),pageData=paginateRows(matching,page,block.table.pageSize,block.table.pagination!==false),rowKey=matching.map(x=>x.index).join(',');
   useEffect(()=>setPage(1),[rowKey,block.table.pageSize,block.table.pagination]);
@@ -76,7 +76,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRo
                   )}
                 </th>
               ))}
-              {!readOnly && <th className="row-action" />}
+              {(!readOnly||canDeleteRow)&&<th className="row-action"/>}
             </tr>
           </thead>
           <tbody>
@@ -84,13 +84,14 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRo
               <tr key={i}>
                 {columns.map((c, j) => (
                   <td key={c.id} style={{color:c.colors?.[r[j]]||undefined}}>
-                    {readOnly ? (
+                    {readOnly||c.system ? (
                       <span>{r[j]}</span>
                     ) : (
                       <CellInput column={c} label={`Row ${i+1}, ${c.name}`} value={r[j]??''} onChange={value=>update({table:{...block.table,rows:rows.map((row,k)=>k===i?row.map((v,ix)=>ix===j?value:v):row)}},`cell-${i}-${j}`)}/>
                     )}
                   </td>
                 ))}
+                {readOnly&&canDeleteRow&&<td className="row-action">{canDeleteRow(block,i)&&<IconButton icon="Trash2" title="Delete your row" onClick={()=>onDeleteLiveRow(block,i)}/>}</td>}
                 {!readOnly && (
                   <td className="row-action">
                     <IconButton
@@ -102,6 +103,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRo
                             table: {
                               ...block.table,
                               rows: rows.filter((_, k) => k !== i),
+                              rowMeta: (block.table.rowMeta||rows.map(()=>null)).filter((_,k)=>k!==i),
                             },
                           },
                           "delete-row",
@@ -122,7 +124,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRo
         <span>
           {visibleRows?.length??rows.length} of {rows.length} rows · {columns.length} columns
         </span>
-        {readOnly && onAddLiveRow && <button onClick={()=>onAddLiveRow(block.id)}><Icon name="Plus" size={13}/> Add row</button>}
+        {readOnly && onAddLiveRow && (!canAddRow||canAddRow(block)) && <button onClick={()=>onAddLiveRow(block.id)}><Icon name="Plus" size={13}/> Add row</button>}
         {!readOnly && (
           <>
             <button
@@ -132,6 +134,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, visibleRo
                     table: {
                       ...block.table,
                       rows: [...rows, columns.map(() => "")],
+                      rowMeta: [...(block.table.rowMeta||rows.map(()=>null)),null],
                     },
                   },
                   "add-row",
@@ -211,6 +214,7 @@ export default function BoardStage({
   onEditor,
   onImport,
   onAddLiveRow,
+  canAddRow, canDeleteRow, onDeleteLiveRow,
   onDuplicate,
   onTransfer,
   onUploadImage,
@@ -582,10 +586,11 @@ export default function BoardStage({
                     update={update}
                     onImport={onImport}
                     onAddLiveRow={onAddLiveRow}
+                    canAddRow={canAddRow} canDeleteRow={canDeleteRow} onDeleteLiveRow={onDeleteLiveRow}
                     visibleRows={filterTableByBlocks(block,board.blocks,filters)}
                   />
                 ) : block.type === "filter" ? (
-                  <FilterBlock block={block} blocks={board.blocks} value={filters[block.id]||{}} onChange={value=>setFilters(previous=>({...previous,[block.id]:value}))}/>
+                  <FilterBlock locked={readOnly} block={block} blocks={board.blocks} value={filters[block.id]||{}} onChange={value=>setFilters(previous=>({...previous,[block.id]:value}))}/>
                 ) : block.type === "report" ? (
                   <Report block={block} blocks={reportBlocksFor(block.report,board.blocks,filters)} />
                 ) : block.type === "button" ? (
@@ -669,7 +674,7 @@ export default function BoardStage({
                           onConnect,
                           onEditor,
                           onImport,
-                          onAddLiveRow,
+                          onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow,
                           onUploadImage,
                           onAddToTab,
                           onNavigate,

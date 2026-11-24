@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import { getPublication, loadProject, addLiveTableRow } from "./firebase";
+import { getPublication, loadProject, addLiveTableRow, bookmarkPublication, addTeamRow, deleteTeamRow } from "./firebase";
 import { readableError, viewBlocks, projectViews, startingView, upgradeBoard } from "./model";
 import { Logo, Icon, IconButton, Spinner, ErrorMessage, Modal, Field } from "./ui";
+import {VerifyEmail} from './Sharing';
 import {CellInput} from "./TableControls";
 import { PresentationTabs } from "./Views";
 import BoardStage, { blockHeight } from "./BoardStage";
-export default function Viewer({ id, live=false, user }) {
+export default function Viewer({ id, live=false, user, onSignIn }) {
   const [board, setBoard] = useState(null),
+    [publication,setPublication]=useState(null),[bookmarked,setBookmarked]=useState(false),
     [error, setError] = useState(""),
     [view, setView] = useState({ x: 0, y: 0, z: 1 }),
     [publishedAt, setPublishedAt] = useState(null),
@@ -17,21 +19,22 @@ export default function Viewer({ id, live=false, user }) {
     stageRef = useRef();
   useEffect(() => {
     let active = true;
-    setError("");
+    setError("");setBoard(null);
     (live ? loadProject(user.uid,id) : getPublication(id))
       .then((p) => {
         if (active) {
-          setBoard(upgradeBoard(JSON.parse(p.boardJson)));
+          setPublication(p);setBoard(upgradeBoard(JSON.parse(p.boardJson)));
           setPublishedAt(p.publishedAt?.toDate?.());
         }
       })
       .catch((e) => {
-        if (active) setError(readableError(e));
+        if (active) setError(e.code==='permission-denied'?'Sign in with an invited, verified email address. This project may be restricted or no longer shared with you.':readableError(e));
       });
     return () => (active = false);
   }, [id, retry, live, user?.uid]);
-  const openRow=(blockId)=>{const block=board.blocks.find(b=>b.id===blockId&&b.type==='table');if(!live||!block)return;setRowTarget(structuredClone(block));setRowValues(block.table.columns.map(()=>''));setRowError('');};
-  const saveRow=async(e)=>{e.preventDefault();setSavingRow(true);setRowError('');try{const updated=await addLiveTableRow(user.uid,id,rowTarget.id,rowValues,rowTarget.table.columns.map(c=>c.id));setBoard(upgradeBoard(updated));setRowTarget(null);}catch(e){setRowError(readableError(e));}finally{setSavingRow(false);}};
+  const openRow=(blockId)=>{const block=board.blocks.find(b=>b.id===blockId&&b.type==='table');if(!block||(!live&&!(publication?.sharing?.audience==='emails'&&block.table.teamAdd&&user?.emailVerified)))return;setRowTarget(structuredClone(block));setRowValues(block.table.columns.map(()=>''));setRowError('');};
+  const saveRow=async(e)=>{e.preventDefault();setSavingRow(true);setRowError('');try{if(live){const updated=await addLiveTableRow(user.uid,id,rowTarget.id,rowValues,rowTarget.table.columns.map(c=>c.id));setBoard(upgradeBoard(updated));}else{await addTeamRow(id,rowTarget,rowValues);setRetry(x=>x+1);}setRowTarget(null);}catch(e){setRowError(readableError(e));}finally{setSavingRow(false);}};
+  useEffect(()=>{if(live||!board||!user||user.isAnonymous||sessionStorage.getItem('maiboard-save-publication')!==id)return;sessionStorage.removeItem('maiboard-save-publication');bookmarkPublication(id,board.name).then(()=>setBookmarked(true)).catch(e=>setRowError(e.message));},[id,board,user?.uid,live]);
   const currentView = activeView || (board ? startingView(board) : "view-1");
   const fit = () => {
     if (!board) return;
@@ -76,10 +79,13 @@ export default function Viewer({ id, live=false, user }) {
         <span className="nav-divider" />
         <strong>{board?.name || "Presentation"}</strong>
         <span className="viewer-readonly">
-          <Icon name={live?'Lock':'Eye'} size={15} /> {live?'Live mode · add rows only':'Published · read only'}
+          <Icon name={live?'Lock':'Eye'} size={15} /> {live?'Live mode · add rows only':publication?.sharing?.audience==='emails'&&board?.blocks.some(b=>b.type==='table'&&b.table.teamAdd)?'Published · team inputs':'Published · read only'}
         </span>
+        {!live&&<button className="btn" onClick={async()=>{if(!user||user.isAnonymous){sessionStorage.setItem('maiboard-save-publication',id);onSignIn?.();return;}try{await bookmarkPublication(id,board.name);setBookmarked(true);}catch(e){setRowError(e.message);}}} disabled={!board||bookmarked}>{bookmarked?'Saved':'Save project'}</button>}
         {live && <button className="btn" onClick={()=>location.hash=`/project/${id}`}>Back to editor</button>}
       </nav>
+      {!live&&<VerifyEmail user={user} onVerified={()=>setRetry(x=>x+1)}/> }
+      {rowError&&!rowTarget&&<ErrorMessage>{rowError}</ErrorMessage>}
       {board && !error && (
         <PresentationTabs
           board={board}
@@ -91,6 +97,7 @@ export default function Viewer({ id, live=false, user }) {
         <div className="load-error">
           <h1>This presentation isn’t available.</h1>
           <ErrorMessage>{error}</ErrorMessage>
+          {!user&&onSignIn&&<button className="btn primary" onClick={onSignIn}>Sign in for private access</button>}
           <button className="btn" onClick={() => setRetry((v) => v + 1)}>
             Try again
           </button>
@@ -109,7 +116,10 @@ export default function Viewer({ id, live=false, user }) {
           view={view}
           setView={setView}
           readOnly
-          onAddLiveRow={live?openRow:undefined}
+          onAddLiveRow={live?openRow:publication?.sharing?.audience==='emails'&&user?.emailVerified?openRow:undefined}
+          canAddRow={block=>live||block.table.teamAdd===true}
+          canDeleteRow={(block,index)=>!live&&block.table.teamDeleteOwn===true&&block.table.rowMeta?.[index]?.entry&&block.table.rowMeta[index].uid===user?.uid}
+          onDeleteLiveRow={async(block,index)=>{try{await deleteTeamRow(id,block.table.rowMeta[index].id);setRetry(x=>x+1);}catch(e){setRowError(e.message);}}}
           stageRef={stageRef}
         >
           <div className="viewer-caption canvas-overlay">
@@ -145,7 +155,7 @@ export default function Viewer({ id, live=false, user }) {
           </div>
         </BoardStage>
       )}
-      {rowTarget && <Modal title={`Add row to ${rowTarget.name}`} onClose={()=>{if(!savingRow)setRowTarget(null)}}><form onSubmit={saveRow}><p>Existing rows, columns, and other blocks stay read only.</p>{rowTarget.table.columns.map((c,i)=><Field key={c.id} label={c.name}><CellInput column={c} label={`New row ${c.name}`} value={rowValues[i]} onChange={value=>setRowValues(values=>values.map((v,j)=>j===i?value:v))}/></Field>)}<ErrorMessage>{rowError}</ErrorMessage><button className="btn primary" disabled={savingRow}>{savingRow?'Saving…':'Add row'}</button></form></Modal>}
+      {rowTarget && <Modal title={`Add row to ${rowTarget.name}`} onClose={()=>{if(!savingRow)setRowTarget(null)}}><form onSubmit={saveRow}><p>Existing rows, columns, and other blocks stay read only.</p>{rowTarget.table.columns.map((c,i)=>c.system||(rowTarget.table.personal?.enabled&&rowTarget.table.personal.columnId===c.id)?null:<Field key={c.id} label={c.name}><CellInput column={c} label={`New row ${c.name}`} value={rowValues[i]} onChange={value=>setRowValues(values=>values.map((v,j)=>j===i?value:v))}/></Field>)}<ErrorMessage>{rowError}</ErrorMessage><button className="btn primary" disabled={savingRow}>{savingRow?'Saving…':'Add row'}</button></form></Modal>}
     </div>
   );
 }

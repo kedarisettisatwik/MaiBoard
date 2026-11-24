@@ -1,14 +1,17 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    function editor(uid,projectId) {
+      return request.auth != null && (request.auth.uid == uid || (request.auth.token.email_verified == true && request.auth.token.email.lower() in firestore.get(/databases/(default)/documents/users/$(uid)/projects/$(projectId)).data.sharing.editorEmails));
+    }
     match /users/{uid}/projects/{projectId}/images/{fileName} {
-      allow read, delete: if request.auth != null && request.auth.uid == uid;
-      allow create, update: if request.auth != null && request.auth.uid == uid
+      allow read, delete: if editor(uid,projectId);
+      allow create, update: if editor(uid,projectId)
         && request.resource.size <= 5 * 1024 * 1024
         && request.resource.contentType.matches('image/(png|jpeg|webp|gif)');
     }
     match /users/{uid}/projects/{projectId}/csv/{fileName} {
-      function owner() { return request.auth != null && request.auth.uid == uid; }
+      function owner() { return editor(uid,projectId); }
       allow read, delete: if owner();
       allow create, update: if owner() && fileName.matches('.*[.]csv')
         && request.resource.size <= 5 * 1024 * 1024

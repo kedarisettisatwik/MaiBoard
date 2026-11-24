@@ -143,3 +143,24 @@ Border color now uses the same color input, custom hex field and preset swatches
 
 Block headers are hidden by default in both Live and published views. Enable Show header in Live / Publish in a block's Properties to show its name/header there. Editor headers remain available for editing and dragging (buttons retain their bare editor appearance). This also applies to blocks nested in tabs and sections.
 
+
+
+### Collaboration and saved publications
+
+New projects ask for a published audience: public, specific email addresses, or all verified MaiBoard accounts. Existing projects retain public-link behavior until their owner changes Sharing. Owners add editor emails in Sharing; invited users verify their email and find the project in Shared. Editors can read and edit the entire working project, including all table data. A server-enforced 90-second lease permits one layout editor at a time and renews every 25 seconds. Closing a browser tab releases its stale lock after the lease expires; navigating back releases it immediately.
+
+Published pages include Save project. Signed-out visitors sign in and the pending save completes automatically. Saved contains a link to the published project, and opens it in a new tab in publish mode. This is a bookmark, so unpublishing or revoking access makes the saved link unavailable.
+
+Export JSON includes every view, block, connection and table value. Import JSON can create a new project from the dashboard or replace the current canvas (with undo). Cloud source-file paths, row ownership metadata and team-write permissions do not transfer. Uploaded image URLs remain linked images; the JSON is not an image-file archive.
+
+### Team tables and personal dashboards
+
+For Specific emails projects, Table properties → Team & personal data enables team row submissions and deletion of a member’s own submissions. Ownership is enforced using the authenticated UID, while Created by displays the person’s name and Created on is an ordinary date column available to filters/reports. Editors manage all rows. Layout/column changes take effect for team submissions after republishing; if the published schema is stale, republish before accepting more data.
+
+For personal dashboards, enable Each viewer sees only their own rows on **each sensitive table**, choose the identity column, and use recipient emails or an explicit email-to-column-value mapping for names. Every row needs a valid, unambiguous identity before publication. Use a signed-in audience. The publication layout contains no table rows or recipient mapping; Firestore sends only rows authorized for the verified email. Charts/cards derive from those same authorized rows. Identity filters are locked in publish mode. Editors intentionally retain access to all rows. Do not put private per-person content in ordinary text/image blocks or a public table.
+
+Publish uses immutable table snapshot generations, and team submissions are associated with a generation so republishing cannot expose stale rows under changed identity settings. Concurrent submissions made during republishing remain in the owner’s working dataset; republish again to include any submission that arrived after that publication started.
+
+Deploy **firestore.rules**, **firestore.indexes.json** and **storage.rules** before deploying this version of the frontend. The composite entries index supports generation + visibleTo lookups. Firebase Storage editor access uses a Firestore membership lookup. Rules intentionally do not trust frontend-only filters for privacy. Existing published snapshots migrate to the new table storage format when republished.
+
+Run `npm test` for board/data tests and `npm run test:rules` for Firestore permission tests (Java 21+ and the Firebase CLI are required). The rules suite uses only the disposable demo-maiboard emulator project.

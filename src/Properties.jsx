@@ -1,3 +1,4 @@
+import {TeamTableProperties} from './Sharing';
 import { ExtraProperties } from "./ExtendedBlocks";
 import { chartColor, chartPalettes } from './chartColors';
 import {cardMetrics} from './analytics';
@@ -184,6 +185,7 @@ export default function Properties({
             </section>
             <div inert={locked ? true : undefined}>
               <ExtraProperties board={board} block={block} update={update} />
+              {block.type==='table'&&<TeamTableProperties block={block} update={update}/>}
             </div>
             <section
               className="property-section"

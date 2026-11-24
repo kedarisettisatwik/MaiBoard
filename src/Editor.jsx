@@ -42,11 +42,15 @@ import {
 } from "./ui";
 import BoardStage, { blockHeight } from "./BoardStage";
 import Properties from "./Properties";
+import {NewProjectModal,SharingModal} from './Sharing';
+import {projectImport,downloadProject,withAudit} from './collaboration';
 import Layers from "./Layers";
 import Views, { PresentationTabs } from "./Views";
 export default function Editor({
   id,
   user,
+  ownerUid = user?.uid,
+  sessionId,
   demo = false,
   initialBoard,
   notify,
@@ -90,12 +94,12 @@ export default function Editor({
     stageRef = useRef(),
     activeEditor = useRef(null);
   const onEditor = useCallback((editor) => (activeEditor.current = editor), []),
-    draftKey = `maiboard-draft:${user?.uid}:${id}`;
+    draftKey = `maiboard-draft:${ownerUid}:${user?.uid}:${id}`;
   useEffect(() => {
     if (demo) return;
     let cancelled = false;
     setLoadError("");
-    loadProject(user.uid, id)
+    loadProject(ownerUid, id)
       .then((p) => {
         if (cancelled) return;
         let b = upgradeBoard(JSON.parse(p.boardJson));
@@ -158,6 +162,7 @@ export default function Editor({
       const b = boardRef.current,
         block = b.blocks.find((x) => x.id === blockId);
       if (!block || !canUpdateBlock(b, block, patch, currentView)) return;
+      if(patch.table?.audit)patch={...patch,table:withAudit({...block,table:patch.table},user).table};
       change(
         (p) => updateBoardBlock(p, blockId, patch),
         key === false
@@ -189,7 +194,7 @@ export default function Editor({
     try {
       const task = queue.current
         .catch(() => {})
-        .then(() => saveProject(user.uid, id, snapshot));
+        .then(() => saveProject(ownerUid, id, snapshot, sessionId));
       queue.current = task;
       await task;
       savedVersion.current = Math.max(savedVersion.current, revision);
@@ -206,7 +211,7 @@ export default function Editor({
       setSaveError(readableError(e));
       return false;
     }
-  }, [demo, user?.uid, id, draftKey]);
+  }, [demo, user?.uid, ownerUid, sessionId, id, draftKey]);
   useEffect(() => {
     if (!board || !dirty || demo) return;
     try {
@@ -511,7 +516,7 @@ export default function Editor({
         throw Error(
           "This CSV would make the board too large. Use fewer rows or columns.",
         );
-      const csv = await uploadCSV(user.uid, id, file);
+      const csv = await uploadCSV(ownerUid, id, file);
       if (!boardRef.current.blocks.some((b) => b.id === uploadTarget)) {
         await removeCSV(csv);
         return;
@@ -600,7 +605,7 @@ export default function Editor({
     try {
       if (!(await persist())) return;
       const result = await publishProject(
-        user.uid,
+        ownerUid,
         id,
         boardRef.current,
         publicationId,
@@ -639,6 +644,9 @@ export default function Editor({
     name = user?.displayName || user?.email?.split("@")[0] || "Explorer";
   return (
     <div className={`editor-app ${present ? "presentation-mode" : ""}`}>
+      {modal?.type==='sharing'&&<SharingModal ownerUid={ownerUid} id={id} onClose={()=>setModal(null)} onSaved={()=>notify('Sharing updated.')}/>}
+      {modal?.type==='create'&&<NewProjectModal board={board} onClose={()=>setModal(null)} onCreate={async(b,sharing)=>{const projectId=await createProject(user.uid,b,sharing);location.hash=`/project/${projectId}`;}}/>}
+      {modal?.type==='import'&&<Modal title="Import project JSON" onClose={()=>setModal(null)}><p>This replaces this canvas with all views and blocks from the file. You can undo the import. Export this project first if you want a backup.</p><input type="file" accept=".json,application/json" onChange={async e=>{try{if(!e.target.files[0])return;const imported=upgradeBoard(projectImport(await e.target.files[0].text()));change(imported);setSelected(null);setActiveViewId(startingView(imported));setModal(null);notify('Imported all views and blocks.');}catch(error){notify(error.message);}}}/></Modal>}
       <header className="editor-header">
         <div className="editor-header-left">
           <IconButton
@@ -663,6 +671,9 @@ export default function Editor({
           </span>
         </div>
         <div className="editor-header-actions">
+          <button className="btn" onClick={()=>downloadProject(board)}>Export JSON</button>
+          <button className="btn" onClick={()=>setModal({type:'import'})}>Import JSON</button>
+          {!demo&&ownerUid===user.uid&&<button className="btn" onClick={()=>setModal({type:'sharing'})}>Sharing</button>}
           {demo ? (
             <>
               <button
@@ -680,16 +691,7 @@ export default function Editor({
                 className="btn primary"
                 disabled={busy}
                 onClick={async () => {
-                  if (user) {
-                    if(busy)return;
-                    setBusy(true);
-                    try {
-                      const projectId = await createProject(user.uid, board);
-                      location.hash = `/project/${projectId}`;
-                    } catch (e) {
-                      notify(readableError(e));
-                    } finally {setBusy(false);}
-                  } else onSignIn();
+                  if(user)setModal({type:'create'});else onSignIn();
                 }}
               >
                 {user ? "Save project" : "Sign in to save"}
@@ -723,14 +725,14 @@ export default function Editor({
                       ? "Save failed"
                       : "Unsaved changes"}
               </button>
-              <button
+              {ownerUid===user.uid&&<button
                 className="btn"
                 onClick={() => {
                   exit(()=>{location.hash=`/live/${id}`});
                 }}
               >
                 <Icon name="Lock" size={16} /> Live mode
-              </button>
+              </button>}
               <button
                 className="btn primary"
                 onClick={() => setModal({ type: "publish" })}
@@ -922,7 +924,7 @@ export default function Editor({
                 reader.readAsDataURL(file);
               });
             }
-            const image = await uploadImage(user.uid, id, file);
+            const image = await uploadImage(ownerUid, id, file);
             change((b) => ({
               ...b,
               imageFiles: [...(b.imageFiles || []), { path: image.path }],
@@ -1324,7 +1326,7 @@ export default function Editor({
                 onClick={async () => {
                   setBusy(true);
                   try {
-                    await unpublishProject(user.uid, id, publicationId);
+                    await unpublishProject(ownerUid, id, publicationId);
                     setPublicationId(null);
                     notify(
                       "Presentation unpublished. The link no longer opens the board.",
