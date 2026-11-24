@@ -1,0 +1,37 @@
+/* Compact dashboard cards: keep touch targets and readable labels at every width. */
+.dashboard .sample-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 210px));
+  gap: 14px;
+}
+.dashboard .sample-image-card { border-radius: 10px; }
+.dashboard .blank-sample {
+  min-height: 0;
+  aspect-ratio: 400 / 260;
+  padding: 14px;
+  gap: 10px;
+  font-size: 13px;
+}
+.dashboard .blank-sample > svg { width: 26px; height: 26px; }
+.dashboard .project-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 250px));
+  gap: 16px;
+}
+.dashboard .project-preview { height: 140px; }
+.dashboard .project-preview > .mini-board {
+  width: 142.857%;
+  height: 142.857%;
+  transform: scale(.7);
+  transform-origin: top left;
+}
+.dashboard .project-card-info { padding: 12px; gap: 8px; }
+.dashboard .project-card-info > button:first-child { flex: 1; }
+.dashboard .project-card h3 { font-size: .95rem; max-width: 100%; margin-bottom: 4px; }
+.dashboard .project-card p { font-size: .75rem; }
+.dashboard .published-tag { top: 8px; right: 8px; padding: 4px 6px; }
+@media (max-width: 600px) {
+  .dashboard .sample-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .dashboard .project-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 250px)); }
+}
+@media (max-width: 360px) {
+  .dashboard .sample-grid { grid-template-columns: minmax(0, 220px); }
+}

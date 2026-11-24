@@ -20,6 +20,7 @@ import {
 } from "./ui";
 import Landing from "./Landing";
 import {sampleProjects,createSample} from "./templates";
+import './compactCards.css';
 const Editor = lazy(() => import("./Editor")),
   Viewer = lazy(() => import("./Viewer"));
 export const navigate = (path) => {

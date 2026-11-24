@@ -16,5 +16,5 @@ test('Filter minimum height is compact and allows room for optional controls',()
   assert.equal(updated.blocks[0].h,126);
 });
 test('Gallery contains only requested samples and blank is supplied separately by dashboard',()=>{
-  assert.deepEqual(sampleProjects.map(x=>x.name),['Team delivery','Budget review','Employee onboarding']);
+  assert.deepEqual(sampleProjects.map(x=>x.name),['Team delivery','Budget review','Employee onboarding','Cloud migration']);
 });
