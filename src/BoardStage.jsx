@@ -1,0 +1,746 @@
+import React, { useRef, useEffect, useState } from "react";
+import { Icon, IconButton, typeIcons } from "./ui";
+import RichText, { SafeHTML } from "./RichText";
+import Report from "./Report";
+import { TabsBlock, ImageBlock, KanbanBlock } from "./ExtendedBlocks";
+import {
+  safeUrl,
+  defaultStyle,
+  uid,
+  isBlockVisible,
+  viewBlocks,
+  projectViews,
+  presentationTabs,
+  presentationTabSource,
+} from "./model";
+export function blockHeight(b) {
+  return b.h || 260;
+}
+export function edgePath(edge, blocks) {
+  const a = blocks.find((b) => b.id === edge.from),
+    b = blocks.find((b) => b.id === edge.to);
+  if (!a || !b) return "";
+  const forward = b.x + b.w / 2 >= a.x + a.w / 2,
+    x1 = forward ? a.x + a.w : a.x,
+    x2 = forward ? b.x : b.x + b.w,
+    y1 = a.y + blockHeight(a) / 2,
+    y2 = b.y + blockHeight(b) / 2,
+    d = Math.max(60, Math.abs(x2 - x1) / 2) * (forward ? 1 : -1);
+  return edge.curve === false
+    ? `M${x1},${y1} L${x2},${y2}`
+    : `M${x1},${y1} C${x1 + d},${y1} ${x2 - d},${y2} ${x2},${y2}`;
+}
+function TableBlock({ block, readOnly, update, onImport }) {
+  const { columns, rows } = block.table;
+  return (
+    <>
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr>
+              {columns.map((c, i) => (
+                <th key={c.id}>
+                  {readOnly ? (
+                    c.name
+                  ) : (
+                    <input
+                      aria-label={`Column ${i + 1} name`}
+                      value={c.name}
+                      onChange={(e) =>
+                        update(
+                          {
+                            table: {
+                              ...block.table,
+                              columns: columns.map((x) =>
+                                x.id === c.id
+                                  ? { ...x, name: e.target.value }
+                                  : x,
+                              ),
+                            },
+                          },
+                          "column-name",
+                        )
+                      }
+                    />
+                  )}
+                </th>
+              ))}
+              {!readOnly && <th className="row-action" />}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                {columns.map((c, j) => (
+                  <td key={c.id}>
+                    {readOnly ? (
+                      <span>{r[j]}</span>
+                    ) : (
+                      <input
+                        aria-label={`Row ${i + 1}, ${c.name}`}
+                        value={r[j] ?? ""}
+                        onChange={(e) =>
+                          update(
+                            {
+                              table: {
+                                ...block.table,
+                                rows: rows.map((row, k) =>
+                                  k === i
+                                    ? row.map((v, ix) =>
+                                        ix === j ? e.target.value : v,
+                                      )
+                                    : row,
+                                ),
+                              },
+                            },
+                            `cell-${i}-${j}`,
+                          )
+                        }
+                      />
+                    )}
+                  </td>
+                ))}
+                {!readOnly && (
+                  <td className="row-action">
+                    <IconButton
+                      icon="X"
+                      title={`Delete row ${i + 1}`}
+                      onClick={() =>
+                        update(
+                          {
+                            table: {
+                              ...block.table,
+                              rows: rows.filter((_, k) => k !== i),
+                            },
+                          },
+                          "delete-row",
+                        )
+                      }
+                    />
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && (
+          <p className="table-empty">No rows yet. Add a row or import a CSV.</p>
+        )}
+      </div>
+      <div className="table-footer">
+        <span>
+          {rows.length} rows · {columns.length} columns
+        </span>
+        {!readOnly && (
+          <>
+            <button
+              onClick={() =>
+                update(
+                  {
+                    table: {
+                      ...block.table,
+                      rows: [...rows, columns.map(() => "")],
+                    },
+                  },
+                  "add-row",
+                )
+              }
+            >
+              <Icon name="Plus" size={13} /> Row
+            </button>
+            <button
+              aria-label="Add table column"
+              onClick={() =>
+                update(
+                  {
+                    table: {
+                      columns: [
+                        ...columns,
+                        { id: uid(), name: `Column ${columns.length + 1}` },
+                      ],
+                      rows: rows.map((r) => [...r, ""]),
+                    },
+                  },
+                  "add-column",
+                )
+              }
+            >
+              <Icon name="Plus" size={13} /> Column
+            </button>
+            <button onClick={() => onImport?.(block.id)}>
+              <Icon name="Upload" size={13} /> CSV
+            </button>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+function TabCanvas({ board, block, tab, referenceViewId, props }) {
+  const [innerView, setInnerView] = useState({ x: 15, y: 15, z: 1 });
+  const readonly = props.readOnly || !!referenceViewId;
+  const chain = [...(props.excludeIds || []), block.id];
+  return (
+    <div className="tab-canvas-wrap">
+      {chain.length > 6 ? (
+        <p className="property-hint">Nested view limit reached.</p>
+      ) : (
+        <BoardStage
+          {...props}
+          board={board}
+          stageRef={undefined}
+          embedded
+          interactionScale={(props.interactionScale || 1) * props.view.z}
+          view={innerView}
+          setView={setInnerView}
+          readOnly={readonly}
+          viewId={referenceViewId || props.viewId}
+          containerId={referenceViewId ? null : block.id}
+          containerTabId={tab.id}
+          excludeIds={chain}
+        />
+      )}
+    </div>
+  );
+}
+export default function BoardStage({
+  board,
+  viewId,
+  onNavigate,
+  view,
+  setView,
+  selected,
+  onSelect,
+  onUpdate,
+  onBegin,
+  onDelete,
+  onConnect,
+  onEditor,
+  onImport,
+  onDuplicate,
+  onUploadImage,
+  onAddToTab,
+  onTabNavigate,
+  runtimeTabs = {},
+  containerId = null,
+  containerTabId = null,
+  excludeIds = [],
+  embedded = false,
+  interactionScale = 1,
+  tool = "select",
+  readOnly = false,
+  children,
+  stageRef,
+}) {
+  const shown = viewBlocks(
+    board,
+    viewId || board.startViewId || projectViews(board)[0].id,
+  ).filter(
+    (b) =>
+      !excludeIds.includes(b.id) &&
+      (containerId
+        ? b.tabParentId === containerId && b.tabId === containerTabId
+        : !b.tabParentId),
+  );
+  const [context, setContext] = useState(null);
+  useEffect(() => {
+    if (!context) return;
+    const close = () => setContext(null);
+    addEventListener("click", close);
+    addEventListener("blur", close);
+    const key = (e) => {
+      if (e.key === "Escape") close();
+    };
+    addEventListener("keydown", key);
+    return () => {
+      removeEventListener("click", close);
+      removeEventListener("blur", close);
+      removeEventListener("keydown", key);
+    };
+  }, [context]);
+  const internalRef = useRef(),
+    root = stageRef || internalRef,
+    drag = useRef(null),
+    [tabState, setTabState] = useState({});
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const wheel = (e) => {
+      if (
+        e.target.closest(
+          ".table-scroll,.block-content,.rich-editor,.report-content",
+        )
+      )
+        return;
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        const r = el.getBoundingClientRect(),
+          x = e.clientX - r.left,
+          y = e.clientY - r.top;
+        setView((v) => {
+          const z = Math.min(
+            2,
+            Math.max(0.2, v.z * (e.deltaY > 0 ? 0.93 : 1.07)),
+          );
+          return {
+            x: x - ((x - v.x) * z) / v.z,
+            y: y - ((y - v.y) * z) / v.z,
+            z,
+          };
+        });
+      } else setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
+    };
+    el.addEventListener("wheel", wheel, { passive: false });
+    return () => el.removeEventListener("wheel", wheel);
+  }, [root, setView]);
+  const pointerDown = (e) => {
+    if (embedded) e.stopPropagation();
+    if (e.button !== 0 || e.target.closest(".canvas-controls,.canvas-overlay"))
+      return;
+    const blockEl = e.target.closest("[data-block]"),
+      edgeEl = e.target.closest("[data-edge]"),
+      id = blockEl?.dataset.block;
+    if (tool === "connect" && !readOnly && id) {
+      e.preventDefault();
+      onSelect?.(id);
+      onConnect?.(id);
+      return;
+    }
+    if (edgeEl && !readOnly) {
+      e.stopPropagation();
+      onSelect?.(edgeEl.dataset.edge);
+      return;
+    }
+    if (id && !readOnly) onSelect?.(id);
+    if (
+      e.target.closest(
+        'button,input,textarea,select,a,[contenteditable="true"]',
+      ) &&
+      !e.target.closest(".resize-handle")
+    )
+      return;
+    if (id && !readOnly && tool !== "pan") {
+      if (
+        !e.target.closest(".block-drag") &&
+        !e.target.closest(".resize-handle")
+      )
+        return;
+      const b = board.blocks.find((b) => b.id === id);
+      onBegin?.();
+      drag.current = {
+        kind: e.target.closest(".resize-handle") ? "resize" : "block",
+        id,
+        x: e.clientX,
+        y: e.clientY,
+        bx: b.x,
+        by: b.y,
+        w: b.w,
+        h: blockHeight(b),
+        z: view.z * interactionScale,
+      };
+    } else {
+      drag.current = {
+        kind: "pan",
+        x: e.clientX,
+        y: e.clientY,
+        bx: view.x,
+        by: view.y,
+      };
+      if (!id) onSelect?.(null);
+    }
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const pointerMove = (e) => {
+    const d = drag.current;
+    if (!d) return;
+    const x = e.clientX - d.x,
+      y = e.clientY - d.y;
+    if (d.kind === "pan") setView((v) => ({ ...v, x: d.bx + x, y: d.by + y }));
+    else if (d.kind === "resize")
+      onUpdate?.(
+        d.id,
+        {
+          w: Math.max(260, Math.round(d.w + x / d.z)),
+          h: Math.max(160, Math.round(d.h + y / d.z)),
+        },
+        false,
+      );
+    else
+      onUpdate?.(
+        d.id,
+        {
+          x: Math.max(0, Math.round(d.bx + x / d.z)),
+          y: Math.max(0, Math.round(d.by + y / d.z)),
+        },
+        false,
+      );
+  };
+  return (
+    <section
+      onContextMenu={(e) => {
+        if (embedded) e.stopPropagation();
+        const b = e.target.closest("[data-block]");
+        if (!readOnly && b) {
+          e.preventDefault();
+          onSelect?.(b.dataset.block);
+          setContext({
+            id: b.dataset.block,
+            x: Math.min(e.clientX, innerWidth - 190),
+            y: Math.min(e.clientY, innerHeight - 110),
+          });
+        }
+      }}
+      ref={root}
+      className={`board-stage tool-${tool} ${readOnly ? "readonly" : ""} ${embedded ? "embedded-stage" : ""}`}
+      aria-label={readOnly ? "Read-only presentation canvas" : "Project canvas"}
+      style={{
+        backgroundSize: `${22 * view.z}px ${22 * view.z}px`,
+        backgroundPosition: `${view.x}px ${view.y}px`,
+      }}
+      onPointerDown={pointerDown}
+      onPointerMove={pointerMove}
+      onPointerUp={() => {
+        const d = drag.current;
+        if (d?.kind === "block") {
+          const b = board.blocks.find((b) => b.id === d.id);
+          if (b && b.type !== "section") {
+            const parent = board.blocks
+              .filter(
+                (s) =>
+                  s.type === "section" &&
+                  s.tabParentId === b.tabParentId &&
+                  s.tabId === b.tabId &&
+                  !s.hidden &&
+                  b.x + b.w / 2 > s.x &&
+                  b.x + b.w / 2 < s.x + s.w &&
+                  b.y + blockHeight(b) / 2 > s.y + 43 &&
+                  b.y + blockHeight(b) / 2 < s.y + blockHeight(s),
+              )
+              .at(-1);
+            onUpdate?.(b.id, { parentId: parent?.id || "" }, false);
+          }
+        }
+        drag.current = null;
+      }}
+      onPointerCancel={() => (drag.current = null)}
+    >
+      <div
+        className="canvas-world"
+        style={{
+          transform: `translate(${view.x}px,${view.y}px) scale(${view.z})`,
+        }}
+      >
+        <svg
+          className="connections"
+          width="12000"
+          height="8000"
+          aria-label="Block connections"
+        >
+          <defs>
+            {board.edges.map((e) => (
+              <React.Fragment key={e.id}>
+                <marker
+                  id={`end-${e.id}`}
+                  markerWidth="9"
+                  markerHeight="9"
+                  refX="8"
+                  refY="4.5"
+                  orient="auto-start-reverse"
+                  markerUnits="strokeWidth"
+                >
+                  <path
+                    d="M1 1 L8 4.5 L1 8"
+                    fill="none"
+                    stroke={e.color}
+                    strokeWidth="1.3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </marker>
+              </React.Fragment>
+            ))}
+          </defs>
+          {board.edges.map((e) => (
+            <g
+              key={e.id}
+              data-edge={e.id}
+              style={{
+                display: [e.from, e.to].every((id) => {
+                  const b = board.blocks.find((b) => b.id === id);
+                  return b && shown.some((x) => x.id === b.id);
+                })
+                  ? undefined
+                  : "none",
+              }}
+            >
+              <path
+                className="edge-hit"
+                d={edgePath(e, board.blocks)}
+                fill="none"
+                stroke="transparent"
+                strokeWidth="18"
+                style={{ pointerEvents: readOnly ? "none" : "stroke" }}
+              />
+              <path
+                d={edgePath(e, board.blocks)}
+                fill="none"
+                stroke={selected === e.id ? "#143b86" : e.color || "#848fa4"}
+                strokeWidth={e.width || 2}
+                strokeDasharray={
+                  e.dash === "dotted"
+                    ? "1 7"
+                    : e.dash === "dashed"
+                      ? "9 6"
+                      : undefined
+                }
+                strokeLinecap="round"
+                markerStart={e.startArrow ? `url(#end-${e.id})` : undefined}
+                markerEnd={e.endArrow ? `url(#end-${e.id})` : undefined}
+                pointerEvents="none"
+              />
+            </g>
+          ))}
+        </svg>
+        {shown
+          .slice()
+          .sort(
+            (a, b) =>
+              (a.type === "section" ? 0 : 1) - (b.type === "section" ? 0 : 1),
+          )
+          .map((block) => {
+            const s = { ...defaultStyle, ...block.style },
+              active = selected === block.id,
+              tabId = readOnly
+                ? tabState[block.id] || block.activeTab
+                : block.activeTab,
+              tab = block.tabs?.find((t) => t.id === tabId) || block.tabs?.[0];
+            const update = (patch, key) => onUpdate?.(block.id, patch, key);
+            return (
+              <article
+                data-block={block.id}
+                key={block.id}
+                className={`canvas-block type-${block.type} ${active && !readOnly ? "selected" : ""}`}
+                style={{
+                  left: block.x,
+                  top: block.y,
+                  width: block.w,
+                  height: blockHeight(block),
+                  background: s.background,
+                  color: s.color,
+                  borderColor: s.borderColor,
+                  borderWidth: s.borderWidth,
+                  borderRadius: s.radius,
+                  opacity: s.opacity,
+                  fontFamily: s.fontFamily,
+                  fontSize: s.fontSize,
+                }}
+              >
+                <div className="block-drag">
+                  <span className="block-type-icon">
+                    <Icon name={typeIcons[block.type]} size={15} />
+                  </span>
+                  {readOnly ? (
+                    <span title={block.name}>{block.name}</span>
+                  ) : (
+                    <input
+                      className="block-name-editor"
+                      aria-label={
+                        block.type === "table"
+                          ? "Table name"
+                          : `Name of ${block.name}`
+                      }
+                      value={block.name}
+                      onChange={(e) =>
+                        update({ name: e.target.value }, "block-name")
+                      }
+                    />
+                  )}
+                  {!readOnly && (
+                    <span className="drag-grip">
+                      <Icon name="GripVertical" size={14} />
+                    </span>
+                  )}
+                </div>
+                {block.type === "table" ? (
+                  <TableBlock
+                    block={block}
+                    readOnly={readOnly}
+                    update={update}
+                    onImport={onImport}
+                  />
+                ) : block.type === "report" ? (
+                  <Report block={block} blocks={board.blocks} />
+                ) : block.type === "button" ? (
+                  <div
+                    className="button-block-content"
+                    style={{ padding: s.padding }}
+                  >
+                    <a
+                      className="board-link-button"
+                      href={
+                        readOnly
+                          ? ["view", "next", "tab"].includes(block.link.action)
+                            ? "#"
+                            : safeUrl(block.link.url) || undefined
+                          : undefined
+                      }
+                      target={
+                        !["view", "next", "tab"].includes(block.link.action) &&
+                        block.link.newTab
+                          ? "_blank"
+                          : undefined
+                      }
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        if (!readOnly) e.preventDefault();
+                        else if (block.link.action === "tab") {
+                          e.preventDefault();
+                          onTabNavigate?.(
+                            block.link.targetTabBlockId,
+                            block.link.targetTabId,
+                          );
+                        } else if (block.link.action === "next") {
+                          e.preventDefault();
+                          const tabs = presentationTabs(board),
+                            index = tabs.findIndex((t) => t.viewId === viewId);
+                          if (tabs[index + 1])
+                            onNavigate?.(tabs[index + 1].viewId);
+                        } else if (block.link.action === "view") {
+                          e.preventDefault();
+                          if (
+                            projectViews(board).some(
+                              (v) => v.id === block.link.targetViewId,
+                            )
+                          )
+                            onNavigate?.(block.link.targetViewId);
+                        }
+                      }}
+                      style={{
+                        background: s.color,
+                        color: s.background,
+                        borderRadius: Math.max(0, s.radius - 4),
+                      }}
+                    >
+                      {block.link.label}
+                      <Icon name="ExternalLink" size={16} />
+                    </a>
+                    {!readOnly && (
+                      <small>Link opens in presentation mode</small>
+                    )}
+                  </div>
+                ) : block.type === "tabs" ? (
+                  <TabsBlock
+                    block={block}
+                    readOnly={readOnly}
+                    update={update}
+                    active={active}
+                    onEditor={onEditor}
+                    padding={s.padding}
+                    onNavigate={onNavigate}
+                    runtimeTab={runtimeTabs[block.id]}
+                    onTabNavigate={onTabNavigate}
+                    onAddToTab={onAddToTab}
+                    renderCanvas={(tab, referenceViewId) => (
+                      <TabCanvas
+                        board={board}
+                        block={block}
+                        tab={tab}
+                        referenceViewId={referenceViewId}
+                        props={{
+                          view,
+                          viewId,
+                          selected,
+                          onSelect,
+                          onUpdate,
+                          onBegin,
+                          onDelete,
+                          onDuplicate,
+                          onConnect,
+                          onEditor,
+                          onImport,
+                          onUploadImage,
+                          onAddToTab,
+                          onNavigate,
+                          onTabNavigate,
+                          runtimeTabs,
+                          tool,
+                          readOnly,
+                          interactionScale,
+                          excludeIds,
+                        }}
+                      />
+                    )}
+                  />
+                ) : block.type === "image" ? (
+                  <ImageBlock
+                    block={block}
+                    readOnly={readOnly}
+                    update={update}
+                    onUpload={onUploadImage}
+                  />
+                ) : block.type === "kanban" ? (
+                  <KanbanBlock
+                    block={block}
+                    readOnly={readOnly}
+                    update={update}
+                  />
+                ) : block.type === "section" ? (
+                  <div className="section-interior" />
+                ) : (
+                  <div className="block-content" style={{ padding: s.padding }}>
+                    {readOnly ? (
+                      <SafeHTML html={block.html} />
+                    ) : (
+                      <RichText
+                        value={block.html}
+                        active={active}
+                        onEditor={onEditor}
+                        onChange={(html) => update({ html }, "rich-text")}
+                      />
+                    )}
+                  </div>
+                )}
+                {active && !readOnly && (
+                  <button
+                    className="resize-handle"
+                    title="Drag to resize block"
+                    aria-label="Resize block"
+                  />
+                )}
+              </article>
+            );
+          })}
+      </div>
+      {context && !readOnly && (
+        <div
+          className="block-context-menu canvas-controls"
+          role="menu"
+          aria-label="Block actions"
+          style={{ position: "fixed", left: context.x, top: context.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            role="menuitem"
+            onClick={() => {
+              onDuplicate?.(context.id);
+              setContext(null);
+            }}
+          >
+            <Icon name="Copy" size={16} /> Duplicate
+          </button>
+          <button
+            role="menuitem"
+            className="context-delete"
+            onClick={() => {
+              onDelete?.(context.id);
+              setContext(null);
+            }}
+          >
+            <Icon name="Trash2" size={16} /> Delete
+          </button>
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}

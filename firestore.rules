@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function validProject(data) {
+      return data.keys().hasAll(['name', 'boardJson', 'blockCount', 'createdAt', 'updatedAt', 'publicationId'])
+        && data.keys().hasOnly(['name', 'boardJson', 'blockCount', 'createdAt', 'updatedAt', 'publicationId'])
+        && data.name is string && data.name.size() <= 100
+        && data.boardJson is string && data.boardJson.size() <= 800000
+        && data.blockCount is int && data.blockCount >= 0
+        && data.createdAt is timestamp && data.updatedAt is timestamp
+        && (data.publicationId == null || (data.publicationId is string && data.publicationId.size() <= 64));
+    }
+    match /users/{uid}/projects/{projectId} {
+      allow read: if owner(uid);
+      allow create: if owner(uid) && validProject(request.resource.data)
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow update: if owner(uid) && validProject(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if owner(uid);
+    }
+    match /publications/{shareId} {
+      function validPublication(data) {
+        return data.keys().hasAll(['ownerUid', 'projectId', 'name', 'boardJson', 'publishedAt'])
+          && data.keys().hasOnly(['ownerUid', 'projectId', 'name', 'boardJson', 'publishedAt'])
+          && data.ownerUid == request.auth.uid
+          && data.projectId is string && data.projectId.size() <= 64
+          && data.name is string && data.name.size() <= 100
+          && data.boardJson is string && data.boardJson.size() <= 800000
+          && data.publishedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid)/projects/$(data.projectId));
+      }
+      // Link visitors can fetch a known snapshot. Public discovery/listing is denied.
+      allow get: if true;
+      allow list: if false;
+      allow create: if signedIn() && validPublication(request.resource.data);
+      allow update: if signedIn() && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.projectId == resource.data.projectId
+        && validPublication(request.resource.data);
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+  }
+}

@@ -1,0 +1,13 @@
+[
+  {
+    "origin": [
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "https://maiboard-d0af8.web.app",
+      "https://maiboard-d0af8.firebaseapp.com",
+      "https://maiboard-workspace.mightywren7.chatgpt.site"
+    ],
+    "method": ["GET"],
+    "maxAgeSeconds": 3600
+  }
+]
