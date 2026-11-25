@@ -194,10 +194,10 @@ export async function getPublication(id) {
     );
   const data=s.data();
   if(data.schemaVersion!==2)return data;
-  const rows=await getDocs(query(collection(db,'publications',id,'generations',data.generation,'rows'),where('visibleTo','in',auth.currentUser?.emailVerified?['*',emailKey(auth.currentUser.email)]:['*'])));
+  const rows=await getDocs(query(collection(db,'publications',id,'generations',data.generation,'rows'),where('visibleTo','in',auth.currentUser?.email?['*',emailKey(auth.currentUser.email)]:['*'])));
   const board=JSON.parse(data.boardJson);
   for(const b of board.blocks.filter(b=>b.type==='table'))b.table.rows=rows.docs.map(d=>d.data()).filter(r=>r.tableId===b.id).sort((a,b)=>a.order-b.order).map(r=>r.values);
-  const entries=await getDocs(query(collection(projectRef(data.ownerUid,data.projectId),'entries'),where('generation','==',data.generation),where('visibleTo','in',auth.currentUser?.emailVerified?['*',emailKey(auth.currentUser.email)]:['*'])));
+  const entries=await getDocs(query(collection(projectRef(data.ownerUid,data.projectId),'entries'),where('generation','==',data.generation),where('visibleTo','in',auth.currentUser?.email?['*',emailKey(auth.currentUser.email)]:['*'])));
   data.boardJson=JSON.stringify(mergeEntries(board,entries.docs.map(d=>({id:d.id,...d.data()}))));
   return data;
 }
@@ -268,9 +268,9 @@ export async function renewEditor(owner,id,sessionId){
 export async function releaseEditor(owner,id,sessionId){
   await runTransaction(db,async tx=>{const ref=leaseRef(owner,id),snap=await tx.get(ref);if(snap.data()?.sessionId===sessionId)tx.delete(ref);});
 }
-export function watchEditor(owner,id,next,error){return onSnapshot(leaseRef(owner,id),s=>next(s.data()),error);}
+export function watchEditor(owner,id,next,error){return onSnapshot(leaseRef(owner,id),{includeMetadataChanges:true},s=>{if(!s.metadata.fromCache&&!s.metadata.hasPendingWrites)next(s.data());},error);}
 export async function addTeamRow(publicationId,block,values){
-  const user=auth.currentUser;if(!user?.emailVerified)throw Error('Verify your email before adding team data.');
+  const user=auth.currentUser;if(!user?.email||user.isAnonymous)throw Error('Sign in before adding team data.');
   const publication=await getDoc(doc(db,'publications',publicationId)),p=publication.data();
   const policy=block.table;if(!policy?.teamAdd)throw Error('Adding rows is disabled for this table.');
   const columns=policy.columns,clean=columns.map((c,i)=>c.id===AUDIT_BY?(user.displayName||'Team member'):c.id===AUDIT_ON?new Date().toISOString().slice(0,10):String(values[i]??''));

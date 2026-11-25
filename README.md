@@ -98,7 +98,7 @@ Update `storage.cors.json` when the production origin changes.
 - Live reports linked to selected table columns: pie chart, signed bar chart and numeric histogram, including configurable bins and invalid-value notices.
 - Solid, dotted or dashed connectors; color, thickness, curves and arrowheads at either or both ends.
 - Publish creates a read-only snapshot URL; republish updates it; unpublish revokes future reads. Viewing preserves interactive tabs, reports and hyperlinks.
-- Serialized Firestore autosave, status/retry messages and a browser draft for recovery after interrupted/failed saves.
+- Explicit Save with save status and unsaved-change warnings before leaving.
 
 ## Data and limits
 
@@ -117,7 +117,7 @@ Production builds and model tests run without backend access. Real account creat
 All blocks support transparent backgrounds, a color picker, and custom hex colors. Reports offer Blue, Vibrant, and Earth palettes plus individual category colors that persist in presentations. Buttons render without a surrounding card; Ctrl+click (or Cmd+click) runs an action in the editor, and a regular click runs it in presentation mode.
 
 
-Publish generates a public, read-only snapshot URL (#/view/...) with no sign-in required. Live mode (#/live/...) requires the project owner to sign in. Its only data action is adding a new table row through a form; it cannot edit existing rows, rename tables, add columns, move blocks, or change styles. Row appends use a Firestore transaction to retain concurrent additions. Live changes update the private working project; publish again to refresh the public snapshot. Firestore owner rules protect private projects. Firebase configuration and rules must be activated as described above.
+Publish generates a read-only snapshot URL (#/view/...) with the configured audience. Live mode (#/live/...) requires the owner or invited editor to sign in and acquire the editor lease. It allows adding, editing and deleting table records, with an explicit Save button. Layout and column schema stay read-only. Publish again to refresh the shared snapshot.
 
 
 Report cards: use the Report card toolbar tool or change a report's Chart type to Report card. Select a table, column, and calculation (maximum, minimum, average, sum, record count, distinct values, or count in a configurable range). Range limits support inclusive/exclusive boundaries. Numeric cards omit blank/nonnumeric cells and support decimals, prefix, suffix, and value color. Cards update with table edits and work in published snapshots. New project immediately creates an empty Untitled board. The dashboard shows four independent sample projects above personal projects: Table report, Employee onboarding, Team delivery, and Budget overview, with Preview and Use sample actions. Selected text has separate highlight/text color dialogs. Checklist labels align beside their checkboxes. Connect toggles back to Select and keeps toolbar controls clickable. Button Properties includes Show icon.
@@ -147,20 +147,31 @@ Block headers are hidden by default in both Live and published views. Enable Sho
 
 ### Collaboration and saved publications
 
-New projects ask for a published audience: public, specific email addresses, or all verified MaiBoard accounts. Existing projects retain public-link behavior until their owner changes Sharing. Owners add editor emails in Sharing; invited users verify their email and find the project in Shared. Editors can read and edit the entire working project, including all table data. A server-enforced 90-second lease permits one layout editor at a time and renews every 25 seconds. Closing a browser tab releases its stale lock after the lease expires; navigating back releases it immediately.
+New projects ask for a published audience: public, specific email addresses, or all signed-in MaiBoard accounts. Existing projects retain public-link behavior until their owner changes Sharing. Owners add editor emails in Sharing; invited users sign in and find the project in Shared. Editors can read and edit the entire working project, including all table data. A server-enforced 90-second lease permits one layout editor at a time and renews every 25 seconds. Closing a browser tab releases its stale lock after the lease expires; navigating back releases it immediately.
 
 Published pages include Save project. Signed-out visitors sign in and the pending save completes automatically. Saved contains a link to the published project, and opens it in a new tab in publish mode. This is a bookmark, so unpublishing or revoking access makes the saved link unavailable.
 
-Export JSON includes every view, block, connection and table value. Import JSON can create a new project from the dashboard or replace the current canvas (with undo). Cloud source-file paths, row ownership metadata and team-write permissions do not transfer. Uploaded image URLs remain linked images; the JSON is not an image-file archive.
+Export JSON includes every view, block, connection and table value. Import JSON can replace the current canvas (with undo). Cloud source-file paths, row ownership metadata and team-write permissions do not transfer. Uploaded image URLs remain linked images; the JSON is not an image-file archive.
 
 ### Team tables and personal dashboards
 
 For Specific emails projects, Table properties → Team & personal data enables team row submissions and deletion of a member’s own submissions. Ownership is enforced using the authenticated UID, while Created by displays the person’s name and Created on is an ordinary date column available to filters/reports. Editors manage all rows. Layout/column changes take effect for team submissions after republishing; if the published schema is stale, republish before accepting more data.
 
-For personal dashboards, enable Each viewer sees only their own rows on **each sensitive table**, choose the identity column, and use recipient emails or an explicit email-to-column-value mapping for names. Every row needs a valid, unambiguous identity before publication. Use a signed-in audience. The publication layout contains no table rows or recipient mapping; Firestore sends only rows authorized for the verified email. Charts/cards derive from those same authorized rows. Identity filters are locked in publish mode. Editors intentionally retain access to all rows. Do not put private per-person content in ordinary text/image blocks or a public table.
+For personal dashboards, enable Each viewer sees only their own rows on **each sensitive table**, choose the identity column, and use recipient emails or an explicit email-to-column-value mapping for names. Every row needs a valid, unambiguous identity before publication. Use a signed-in audience. The publication layout contains no table rows or recipient mapping; Firestore sends only rows authorized for the signed-in account email. Charts/cards derive from those same authorized rows. Identity filters are locked in publish mode. Editors intentionally retain access to all rows. Do not put private per-person content in ordinary text/image blocks or a public table.
 
 Publish uses immutable table snapshot generations, and team submissions are associated with a generation so republishing cannot expose stale rows under changed identity settings. Concurrent submissions made during republishing remain in the owner’s working dataset; republish again to include any submission that arrived after that publication started.
 
 Deploy **firestore.rules**, **firestore.indexes.json** and **storage.rules** before deploying this version of the frontend. The composite entries index supports generation + visibleTo lookups. Firebase Storage editor access uses a Firestore membership lookup. Rules intentionally do not trust frontend-only filters for privacy. Existing published snapshots migrate to the new table storage format when republished.
 
 Run `npm test` for board/data tests and `npm run test:rules` for Firestore permission tests (Java 21+ and the Firebase CLI are required). The rules suite uses only the disposable demo-maiboard emulator project.
+
+
+### Manual saving and adjustable workspace
+
+Project edits and Live table-data edits are staged until Save (or Ctrl/Cmd+S in the editor). Autosave and automatic recovery drafts are disabled. Publish requires saved changes. Leaving with unsaved changes shows Keep editing, Discard changes and leave, and Save and leave; closing or reloading uses the browser's standard unsaved-change prompt.
+
+Drag the Layers/Properties outer border to resize a panel; these personal UI widths are remembered locally. Vertical tab navigation has a draggable separator and a Navigation width property. Its width is saved with the project, and child blocks stay inside the remaining content area. Every block has a Box shadow checkbox under Appearance.
+
+Owners and invited editors can modify/delete anyone's table records in either Editor or Live mode, while original Created by metadata is retained. Live mode keeps board layout and column schema read-only and uses the same exclusive editor lease. Published viewers retain the configured own-row submission/deletion limits.
+
+Email verification is no longer required anywhere, per the project owner's request. Access checks use the signed-in account's email and UID. All registered accounts can open All MaiBoard users shares. Email-based audience/editor/personal-row checks use the claimed account email without proof of mailbox ownership.

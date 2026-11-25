@@ -36,7 +36,7 @@ export function edgePath(edge, blocks) {
     ? `M${x1},${y1} L${x2},${y2}`
     : `M${x1},${y1} C${x1 + d},${y1} ${x2 - d},${y2} ${x2},${y2}`;
 }
-function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow, visibleRows }) {
+function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow, editData=false, visibleRows }) {
   const { columns, rows } = block.table;
   const [page,setPage]=useState(1),matching=visibleRows||rows.map((row,index)=>({row,index})),pageData=paginateRows(matching,page,block.table.pageSize,block.table.pagination!==false),rowKey=matching.map(x=>x.index).join(',');
   useEffect(()=>setPage(1),[rowKey,block.table.pageSize,block.table.pagination]);
@@ -76,7 +76,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow
                   )}
                 </th>
               ))}
-              {(!readOnly||canDeleteRow)&&<th className="row-action"/>}
+              {(!readOnly||editData||canDeleteRow)&&<th className="row-action"/>}
             </tr>
           </thead>
           <tbody>
@@ -84,15 +84,15 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow
               <tr key={i}>
                 {columns.map((c, j) => c.hidden?null:(
                   <td key={c.id} style={{color:c.colors?.[r[j]]||undefined}}>
-                    {readOnly||c.system ? (
+                    {(readOnly&&!editData)||c.system ? (
                       <span>{r[j]}</span>
                     ) : (
                       <CellInput column={c} label={`Row ${i+1}, ${c.name}`} value={r[j]??''} onChange={value=>update({table:{...block.table,rows:rows.map((row,k)=>k===i?row.map((v,ix)=>ix===j?value:v):row)}},`cell-${i}-${j}`)}/>
                     )}
                   </td>
                 ))}
-                {readOnly&&canDeleteRow&&<td className="row-action">{canDeleteRow(block,i)&&<IconButton icon="Trash2" title="Delete your row" onClick={()=>onDeleteLiveRow(block,i)}/>}</td>}
-                {!readOnly && (
+                {readOnly&&!editData&&canDeleteRow&&<td className="row-action">{canDeleteRow(block,i)&&<IconButton icon="Trash2" title="Delete your row" onClick={()=>onDeleteLiveRow(block,i)}/>}</td>}
+                {(!readOnly||editData) && (
                   <td className="row-action">
                     <IconButton
                       icon="X"
@@ -215,6 +215,7 @@ export default function BoardStage({
   onImport,
   onAddLiveRow,
   canAddRow, canDeleteRow, onDeleteLiveRow,
+  editTableData=false, onTableDataChange,
   onDuplicate,
   onTransfer,
   onUploadImage,
@@ -531,6 +532,7 @@ export default function BoardStage({
                   top: block.y,
                   width: block.w,
                   height: blockHeight(block),
+                  boxShadow: block.type==='button'?'none':s.boxShadow===false?'none':'0 5px 18px #1e3a5f10',
                   background: s.background,
                   color: s.color,
                   borderColor: s.borderColor,
@@ -583,7 +585,8 @@ export default function BoardStage({
                   <TableBlock
                     block={block}
                     readOnly={readOnly}
-                    update={update}
+                    update={editTableData?(patch)=>onTableDataChange?.(block.id,patch.table):update}
+                    editData={editTableData}
                     onImport={onImport}
                     onAddLiveRow={onAddLiveRow}
                     canAddRow={canAddRow} canDeleteRow={canDeleteRow} onDeleteLiveRow={onDeleteLiveRow}
@@ -636,6 +639,7 @@ export default function BoardStage({
                         background: s.background,
                         color: s.color,
                         borderRadius: s.radius,
+                        boxShadow: s.boxShadow===false?'none':'0 5px 18px #1e3a5f10',
                       }}
                     >
                       {block.link.label}
@@ -674,7 +678,7 @@ export default function BoardStage({
                           onConnect,
                           onEditor,
                           onImport,
-                          onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow,
+                          onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow, editTableData, onTableDataChange,
                           onUploadImage,
                           onAddToTab,
                           onNavigate,

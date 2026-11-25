@@ -22,7 +22,7 @@ import Landing from "./Landing";
 import {sampleProjects,createSample} from "./templates";
 import './compactCards.css';
 import './collaboration.css';
-import {NewProjectModal,EditorSession,VerifyEmail} from './Sharing';
+import {NewProjectModal,EditorSession} from './Sharing';
 export const openProjectTab=path=>window.open(`${location.origin}${location.pathname}#${path}`,'_blank','noopener,noreferrer');
 const Editor = lazy(() => import("./Editor")),
   Viewer = lazy(() => import("./Viewer"));
@@ -44,10 +44,15 @@ export default function App() {
     [],
   );
   useEffect(() => {
-    const onHash = () => setRoute(location.hash.slice(1) || "/");
+    const onHash = () => {
+      const next=location.hash.slice(1)||'/';if(next===route)return;
+      const event=new CustomEvent('maiboard-before-navigate',{cancelable:true,detail:{proceed:()=>{history.replaceState(null,'','#'+next);setRoute(next);}}});
+      if(!window.dispatchEvent(event)){history.pushState(null,'','#'+route);return;}
+      setRoute(next);
+    };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
-  }, []);
+  }, [route]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 5000);
@@ -68,7 +73,7 @@ export default function App() {
   return (
     <>
       <Suspense fallback={<Spinner />}>
-        {liveId ? (!authReady ? <Spinner/> : user ? <Viewer key={`live-${user.uid}-${liveId}`} id={liveId} live user={user}/> : <div className="load-error"><Logo/><h1>Sign in to open Live mode</h1><p>Only the project owner can add table rows.</p><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : viewerId ? (
+        {liveId ? (!authReady ? <Spinner/> : user ? <EditorSession key={`${liveId.includes('/')?liveId.split('/')[0]:user.uid}/${liveId.split('/').at(-1)}`} ownerUid={liveId.includes('/')?liveId.split('/')[0]:user.uid} id={liveId.split('/').at(-1)} user={user} onExit={()=>navigate('/')}>{sessionId=><Viewer id={liveId.split('/').at(-1)} ownerUid={liveId.includes('/')?liveId.split('/')[0]:user.uid} sessionId={sessionId} live user={user}/>}</EditorSession> : <div className="load-error"><Logo/><h1>Sign in to open Live mode</h1><p>Owners and invited editors can manage table data.</p><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : viewerId ? (
           <Viewer id={viewerId} user={user} onSignIn={()=>setAuthMode("signin")} />
         ) : (route === "/demo" || route.startsWith("/sample/")) ? (
           <Editor
@@ -83,7 +88,7 @@ export default function App() {
         ) : !authReady ? (
           <Spinner />
         ) : projectId && user ? (
-          <EditorSession ownerUid={projectId.includes("/")?projectId.split("/")[0]:user.uid} id={projectId.split("/").at(-1)} user={user} onExit={()=>navigate("/")}>{sessionId=><Editor
+          <EditorSession key={`${projectId.includes('/')?projectId.split('/')[0]:user.uid}/${projectId.split('/').at(-1)}`} ownerUid={projectId.includes("/")?projectId.split("/")[0]:user.uid} id={projectId.split("/").at(-1)} user={user} onExit={()=>navigate("/")}>{sessionId=><Editor
             sessionId={sessionId} ownerUid={projectId.includes("/")?projectId.split("/")[0]:user.uid}
             key={`${user.uid}/${projectId}`}
             id={projectId.split("/").at(-1)}
@@ -276,7 +281,7 @@ function AuthModal({ mode, setMode, onClose, notify }) {
 }
 function Dashboard({ user, notify, onLogout }) {
   const [projects, setProjects] = useState([]),
-    [shared,setShared]=useState([]),[saved,setSaved]=useState([]),[tab,setTab]=useState("all"),[creating,setCreating]=useState(null),[authRevision,setAuthRevision]=useState(0),
+    [shared,setShared]=useState([]),[saved,setSaved]=useState([]),[tab,setTab]=useState("all"),[creating,setCreating]=useState(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [search, setSearch] = useState(""),
@@ -298,7 +303,7 @@ function Dashboard({ user, notify, onLogout }) {
       },
     );
   }, [user.uid, retry]);
-  useEffect(()=>{const stops=[watchSaved(user.uid,setSaved,e=>notify(readableError(e)))];if(user.emailVerified)stops.push(watchShared(user.email,setShared,e=>notify(readableError(e))));return()=>stops.forEach(stop=>stop());},[user.uid,user.emailVerified,authRevision]);
+  useEffect(()=>{const stops=[watchSaved(user.uid,setSaved,e=>notify(readableError(e)))];if(user.email)stops.push(watchShared(user.email,setShared,e=>notify(readableError(e))));return()=>stops.forEach(stop=>stop());},[user.uid,user.email]);
   const make = () => setCreating(blankBoard('Untitled'));
   const sourceProjects=tab==='shared'?shared:tab==='saved'?saved:projects;
   const filtered = sourceProjects.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())),
@@ -318,7 +323,7 @@ function Dashboard({ user, notify, onLogout }) {
         </div>
       </nav>
       <div className="dashboard-content">
-        <VerifyEmail user={user} onVerified={()=>setAuthRevision(x=>x+1)}/><div className="dashboard-intro">
+        <div className="dashboard-intro">
           <div>
             <span className="eyebrow">A LITTLE SPACE FOR BIG IDEAS</span>
             <h1>Your projects.</h1>

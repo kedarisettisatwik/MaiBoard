@@ -1,4 +1,5 @@
 import {TeamTableProperties} from './Sharing';
+import {ResizeGrip} from './WorkspaceControls';
 import { ExtraProperties } from "./ExtendedBlocks";
 import { chartColor, chartPalettes } from './chartColors';
 import {cardMetrics} from './analytics';
@@ -41,6 +42,7 @@ export default function Properties({
   onArrange,
   currentView,
   onUnlock,
+  panelWidth,onPanelResize,
 }) {
   const block = board.blocks.find((b) => b.id === selected),
     edge = board.edges.find((e) => e.id === selected),
@@ -49,7 +51,8 @@ export default function Properties({
   useEffect(()=>setBorderDraft(block?.style?.borderColor||defaultStyle.borderColor),[selected,block?.style?.borderColor]);
   if (!block && !edge)
     return (
-      <aside className="properties-panel">
+      <aside className="properties-panel resizable-panel" style={{width:panelWidth}}>
+        {onPanelResize&&<ResizeGrip side="left" value={panelWidth} onChange={onPanelResize} min={235} max={600} reset={270} label="Resize Properties panel"/>}
         <div className="panel-heading">
           <h2>Properties</h2>
           <IconButton
@@ -104,7 +107,8 @@ export default function Properties({
     </Field>
   );
   return (
-    <aside className="properties-panel">
+    <aside className="properties-panel resizable-panel" style={{width:panelWidth}}>
+      {onPanelResize&&<ResizeGrip side="left" value={panelWidth} onChange={onPanelResize} min={235} max={600} reset={270} label="Resize Properties panel"/>}
       <div className="panel-heading">
         <h2>Properties</h2>
         <IconButton
@@ -192,6 +196,7 @@ export default function Properties({
               inert={locked ? true : undefined}
             >
               <h3>Appearance</h3>
+              <label><input type="checkbox" checked={s.boxShadow!==false} onChange={e=>style({boxShadow:e.target.checked},"box-shadow")}/> Box shadow</label>
               <Field label="Background">
                 <div className="color-field">
                   <input

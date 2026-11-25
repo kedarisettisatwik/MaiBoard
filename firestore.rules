@@ -2,15 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
-    function verified() { return signedIn() && request.auth.token.email_verified == true; }
+    // Email verification is optional; access uses the signed-in account email.
+    function emailAccount() { return signedIn() && request.auth.token.email is string; }
     function email() { return request.auth.token.email.lower(); }
     function owner(uid) { return signedIn() && request.auth.uid == uid; }
     function project(uid,id) { return get(/databases/$(database)/documents/users/$(uid)/projects/$(id)).data; }
     function settings(data) { return data.get('sharing', {'audience':'public','viewerEmails':[],'editorEmails':[]}); }
-    function editor(uid,id) { return owner(uid) || (verified() && email() in settings(project(uid,id)).editorEmails); }
+    function editor(uid,id) { return owner(uid) || (emailAccount() && email() in settings(project(uid,id)).editorEmails); }
     function audience(uid,data) {
       let sharing = settings(data);
-      return owner(uid) || sharing.audience == 'public' || (verified() && (sharing.audience == 'users' || email() in sharing.viewerEmails || email() in sharing.editorEmails));
+      return owner(uid) || sharing.audience == 'public' || (signedIn() && sharing.audience == 'users') || (emailAccount() && (email() in sharing.viewerEmails || email() in sharing.editorEmails));
     }
     function sharingValid(s) { return s is map && s.keys().hasOnly(['audience','viewerEmails','editorEmails']) && s.audience in ['public','emails','users'] && s.viewerEmails is list && s.editorEmails is list && s.viewerEmails.size()+s.editorEmails.size() <= 80; }
     function lease(uid,id) { return get(/databases/$(database)/documents/users/$(uid)/projects/$(id)/sessions/editor).data; }
@@ -45,24 +46,24 @@ service cloud.firestore {
         allow write: if holdsLease(uid,id);
       }
       match /identities/{identityId} {
-        allow get: if editor(uid,id) || (verified() && resource.data.email == email() && audience(uid,project(uid,id)));
+        allow get: if editor(uid,id) || (emailAccount() && resource.data.email == email() && audience(uid,project(uid,id)));
         allow list: if editor(uid,id);
         allow write: if holdsLease(uid,id);
       }
       match /entries/{entryId} {
         function policy() { return get(/databases/$(database)/documents/users/$(uid)/projects/$(id)/policies/$(request.resource.data.tableId)).data; }
         function pub(data) { return get(/databases/$(database)/documents/publications/$(project(uid,id).publicationId)).data; }
-        function canView(data) { let p=pub(data); return data.generation == p.generation && p.ownerUid == uid && p.projectId == id && audience(uid,p) && audience(uid,project(uid,id)) && (data.visibleTo == '*' || (verified() && data.visibleTo == email())); }
+        function canView(data) { let p=pub(data); return data.generation == p.generation && p.ownerUid == uid && p.projectId == id && audience(uid,p) && audience(uid,project(uid,id)) && (data.visibleTo == '*' || (emailAccount() && data.visibleTo == email())); }
         function identity(p,d) { return !p.personal.enabled ? d.visibleTo == '*' : (d.visibleTo == email() && d.values[p.identityIndex] == (p.personal.get('mode','email') == 'mapping' ? p.identities[email()] : request.auth.token.email)); }
         allow read: if editor(uid,id) || canView(resource.data);
-        allow create: if verified() && settings(project(uid,id)).audience == 'emails' && audience(uid,project(uid,id)) && policy().teamAdd && request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time && request.resource.data.createdByName is string && request.resource.data.createdByName.size() <= 100 && request.resource.data.values is list && request.resource.data.values.size() == policy().columns.size() && request.resource.data.columnIds == policy().columnIds && identity(policy(),request.resource.data) && canView(request.resource.data)
+        allow create: if emailAccount() && settings(project(uid,id)).audience == 'emails' && audience(uid,project(uid,id)) && policy().teamAdd && request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time && request.resource.data.createdByName is string && request.resource.data.createdByName.size() <= 100 && request.resource.data.values is list && request.resource.data.values.size() == policy().columns.size() && request.resource.data.columnIds == policy().columnIds && identity(policy(),request.resource.data) && canView(request.resource.data)
           && request.resource.data.keys().hasOnly(['tableId','columnIds','values','visibleTo','createdByUid','createdByName','createdOn','createdAt','publicationId','generation']);
         allow update: if holdsLease(uid,id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['values','columnIds','visibleTo','generation']);
-        allow delete: if holdsLease(uid,id) || (verified() && resource.data.createdByUid == request.auth.uid && canView(resource.data) && get(/databases/$(database)/documents/users/$(uid)/projects/$(id)/policies/$(resource.data.tableId)).data.teamDeleteOwn);
+        allow delete: if holdsLease(uid,id) || (emailAccount() && resource.data.createdByUid == request.auth.uid && canView(resource.data) && get(/databases/$(database)/documents/users/$(uid)/projects/$(id)/policies/$(resource.data.tableId)).data.teamDeleteOwn);
       }
     }
     match /projectInvites/{invite} {
-      allow read: if owner(resource.data.ownerUid) || (verified() && resource.data.email == email());
+      allow read: if owner(resource.data.ownerUid) || (emailAccount() && resource.data.email == email());
       allow create: if validInvite();
       allow update: if request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.projectId == resource.data.projectId && request.resource.data.email == resource.data.email && validInvite();
       function validInvite() { return request.resource.data.keys().hasOnly(['ownerUid','projectId','email','name','role']) && owner(request.resource.data.ownerUid) && request.resource.data.role == 'editor' && request.resource.data.email in settings(getAfter(/databases/$(database)/documents/users/$(request.resource.data.ownerUid)/projects/$(request.resource.data.projectId)).data).editorEmails; }
@@ -82,7 +83,7 @@ service cloud.firestore {
     }
     match /publications/{publicationId}/generations/{generation}/rows/{rowId} {
       function p() { return get(/databases/$(database)/documents/publications/$(publicationId)).data; }
-      allow read: if generation == p().generation && audience(p().ownerUid,p()) && audience(p().ownerUid,project(p().ownerUid,p().projectId)) && (resource.data.visibleTo == '*' || (verified() && resource.data.visibleTo == email()));
+      allow read: if generation == p().generation && audience(p().ownerUid,p()) && audience(p().ownerUid,project(p().ownerUid,p().projectId)) && (resource.data.visibleTo == '*' || (emailAccount() && resource.data.visibleTo == email()));
       allow create: if request.resource.data.publicationId == publicationId && request.resource.data.generation == generation && (!exists(/databases/$(database)/documents/publications/$(publicationId)) || (p().ownerUid == request.resource.data.ownerUid && p().projectId == request.resource.data.projectId)) && holdsLease(request.resource.data.ownerUid,request.resource.data.projectId) && request.resource.data.keys().hasOnly(['tableId','values','order','visibleTo','publicationId','generation','ownerUid','projectId']) && request.resource.data.values is list && request.resource.data.visibleTo is string;
       allow update: if false;
       allow delete: if owner(resource.data.ownerUid);

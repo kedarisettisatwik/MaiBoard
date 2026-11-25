@@ -1,7 +1,8 @@
+import {ResizeGrip} from './WorkspaceControls';
 import React, { useRef, useState } from "react";
 import { Icon, IconButton, Modal, Field, ErrorMessage } from "./ui";
 import RichText, { SafeHTML } from "./RichText";
-import { uid, safeImageUrl, moveCard, projectViews } from "./model";
+import { uid, safeImageUrl, moveCard, projectViews, verticalTabWidth } from "./model";
 
 export function TabsBlock({
   block,
@@ -53,6 +54,7 @@ export function TabsBlock({
     <div
       className={`tabs-layout ${layout} highlight-${highlight}`}
       style={{
+        "--tab-nav-width": `${verticalTabWidth(block)}px`,
         "--tab-accent": block.tabAccent || "#2563eb",
         "--tab-active-text": block.tabTextColor || "#ffffff",
       }}
@@ -106,6 +108,7 @@ export function TabsBlock({
               </button>
             ))}
           </div>
+          {layout==='vertical'&&!readOnly&&<ResizeGrip inline scaled label="Resize vertical tab navigation" min={80} max={Math.min(600,block.w*0.6)} value={verticalTabWidth(block)} onChange={width=>update({tabNavWidth:width},'tab-navigation-width')}/>}
           <div className="block-content" role="tabpanel" style={{ padding }}>
             {content(
               block.tabs.find((t) => t.id === selected) || block.tabs[0],
@@ -483,6 +486,7 @@ export function ExtraProperties({ board, block, update }) {
               <option value="accordion">Dropdown / accordion</option>
             </select>
           </Field>
+          {block.tabLayout==='vertical'&&<Field label="Navigation width (px)"><input type="number" min={80} max={Math.floor(Math.min(600,block.w*0.6))} value={verticalTabWidth(block)} onChange={e=>{if(e.target.value)update({tabNavWidth:Math.max(80,Math.min(600,block.w*0.6,+e.target.value))},'tab-navigation-width')}}/></Field>}
           <Field label="Active tab highlight">
             <select
               value={block.tabHighlight || "underline"}

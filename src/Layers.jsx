@@ -1,4 +1,5 @@
 import { blockIsLocked } from "./model";
+import {ResizeGrip} from './WorkspaceControls';
 import React, { useState, useEffect } from "react";
 import { Icon, IconButton, typeIcons } from "./ui";
 export default function Layers({
@@ -18,6 +19,7 @@ export default function Layers({
   onDeleteGroup,
   onClose,
   demo,
+  panelWidth,onPanelResize,
 }) {
   const [collapsed, setCollapsed] = useState({}),
     [context, setContext] = useState(null);
@@ -153,7 +155,8 @@ export default function Layers({
       </div>
     ));
   return (
-    <aside className="layers-panel">
+    <aside className="layers-panel resizable-panel" style={{width:panelWidth}}>
+      {onPanelResize&&<ResizeGrip value={panelWidth} onChange={onPanelResize} min={180} max={520} reset={228} label="Resize Layers panel"/>}
       <div className="panel-heading">
         <h2>
           <Icon name="Layers" size={16} /> Layers

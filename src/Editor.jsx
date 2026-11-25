@@ -1,3 +1,4 @@
+import {useUnsavedChanges} from './WorkspaceControls';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   loadProject,
@@ -9,6 +10,7 @@ import {
   unpublishProject,
   createProject,
   removeCSV,
+  releaseEditor,
 } from "./firebase";
 import {
   sampleBoard,
@@ -69,6 +71,8 @@ export default function Editor({
     [layers, setLayers] = useState(innerWidth > 800),
     [properties, setProperties] = useState(innerWidth > 1100),
     [saveState, setSaveState] = useState("saved"),
+    [layerWidth,setLayerWidth]=useState(()=>Number(localStorage.getItem("maiboard-layers-width"))||228),
+    [propertyWidth,setPropertyWidth]=useState(()=>Number(localStorage.getItem("maiboard-properties-width"))||270),
     [saveError, setSaveError] = useState(""),
     [modal, setModal] = useState(null),
     [groupName, setGroupName] = useState(""),
@@ -93,8 +97,9 @@ export default function Editor({
     fileInput = useRef(),
     stageRef = useRef(),
     activeEditor = useRef(null);
-  const onEditor = useCallback((editor) => (activeEditor.current = editor), []),
-    draftKey = `maiboard-draft:${ownerUid}:${user?.uid}:${id}`;
+  const allowNavigation=useRef(false);
+  const onEditor = useCallback((editor) => (activeEditor.current = editor), []);
+  useUnsavedChanges(()=>!demo&&version.current!==savedVersion.current&&!allowNavigation.current,action=>setModal({type:"leave",action}));
   useEffect(() => {
     if (demo) return;
     let cancelled = false;
@@ -105,19 +110,6 @@ export default function Editor({
         let b = upgradeBoard(JSON.parse(p.boardJson));
         b.groups ||= [];
         b.csvFiles ||= [];
-        let draft;
-        try {
-          draft = JSON.parse(localStorage.getItem(draftKey));
-        } catch {}
-        if (
-          draft?.at > (p.updatedAt?.toMillis?.() || 0) &&
-          draft.board?.version === 2
-        ) {
-          b = draft.board;
-          version.current = 1;
-          setDirty(true);
-          notify("Recovered your unsaved changes.");
-        }
         boardRef.current = b;
         setBoard(b);
         setPublicationId(p.publicationId || null);
@@ -128,7 +120,7 @@ export default function Editor({
     return () => {
       cancelled = true;
     };
-  }, [id, user?.uid, demo, draftKey, notify, retry]);
+  }, [id, user?.uid, demo, notify, retry]);
   const checkpoint = useCallback((key = true) => {
     const now = Date.now();
     if (
@@ -201,9 +193,6 @@ export default function Editor({
       if (version.current === revision) {
         setDirty(false);
         setSaveState("saved");
-        try {
-          localStorage.removeItem(draftKey);
-        } catch {}
       }
       return true;
     } catch (e) {
@@ -211,25 +200,7 @@ export default function Editor({
       setSaveError(readableError(e));
       return false;
     }
-  }, [demo, user?.uid, ownerUid, sessionId, id, draftKey]);
-  useEffect(() => {
-    if (!board || !dirty || demo) return;
-    try {
-      localStorage.setItem(draftKey, JSON.stringify({ at: Date.now(), board }));
-    } catch {}
-    const timer = setTimeout(persist, 700);
-    return () => clearTimeout(timer);
-  }, [board, dirty, demo, draftKey, persist]);
-  useEffect(() => {
-    const leave = (e) => {
-      if (!demo && version.current !== savedVersion.current) {
-        e.preventDefault();
-        e.returnValue = "";
-      }
-    };
-    addEventListener("beforeunload", leave);
-    return () => removeEventListener("beforeunload", leave);
-  }, [demo]);
+  }, [demo, user?.uid, ownerUid, sessionId, id]);
   const select = useCallback(
     (blockId, tabId) => {
       setSelected(blockId);
@@ -597,13 +568,13 @@ export default function Editor({
     return () => removeEventListener("keydown", keyboard);
   });
   const exit = async (action) => {
-    if (await persist()) action();
-    else setModal({ type: "leave", action });
+    if(!demo&&version.current!==savedVersion.current)setModal({type:'leave',action:()=>{allowNavigation.current=true;action();}});
+    else action();
   };
   const publish = async () => {
     setBusy(true);
     try {
-      if (!(await persist())) return;
+      if(version.current!==savedVersion.current){notify('Click Save before publishing your changes.');return;}
       const result = await publishProject(
         ownerUid,
         id,
@@ -699,43 +670,19 @@ export default function Editor({
             </>
           ) : (
             <>
+              <span className="save-status" role="status">{saveState==='saved'?'Saved':saveState==='saving'?'Saving…':saveState==='error'?'Save failed':'Unsaved changes'}</span>
               <button
-                className={`save-status ${saveState === "error" ? "failed" : ""}`}
-                onClick={persist}
-                title="Save now"
-              >
-                <Icon
-                  name={
-                    saveState === "saved"
-                      ? "Check"
-                      : saveState === "saving"
-                        ? "Loader2"
-                        : saveState === "error"
-                          ? "AlertCircle"
-                          : "Cloud"
-                  }
-                  size={14}
-                  className={saveState === "saving" ? "spin" : ""}
-                />
-                {saveState === "saved"
-                  ? "All changes saved"
-                  : saveState === "saving"
-                    ? "Saving…"
-                    : saveState === "error"
-                      ? "Save failed"
-                      : "Unsaved changes"}
-              </button>
-              {ownerUid===user.uid&&<button
                 className="btn"
                 onClick={() => {
-                  exit(()=>{location.hash=`/live/${id}`});
+                  exit(()=>{location.hash=`/live/${ownerUid}/${id}`});
                 }}
               >
                 <Icon name="Lock" size={16} /> Live mode
-              </button>}
+              </button>
+              <button className="btn primary" disabled={!dirty||saveState==='saving'} onClick={persist}><Icon name="Save" size={16}/>{saveState==='saving'?'Saving…':'Save'}</button>
               <button
                 className="btn primary"
-                onClick={() => setModal({ type: "publish" })}
+                onClick={() => dirty?notify('Save your changes before publishing.'):setModal({ type: "publish" })}
               >
                 <Icon name="Globe" size={16} /> Publish
               </button>
@@ -745,8 +692,8 @@ export default function Editor({
                 </span>
                 <IconButton
                   icon="LogOut"
-                  title="Save and log out"
-                  onClick={() => exit(onLogout)}
+                  title="Log out"
+                  onClick={() => exit(async()=>{try{await releaseEditor(ownerUid,id,sessionId);}catch{}onLogout();})}
                 />
               </div>
             </>
@@ -820,6 +767,7 @@ export default function Editor({
       <div className="editor-body">
         {layers && !present && (
           <Layers
+            panelWidth={layerWidth} onPanelResize={width=>{setLayerWidth(width);localStorage.setItem("maiboard-layers-width",width);}}
             onColumnVisibility={(blockId,columnId)=>{const block=boardRef.current.blocks.find(b=>b.id===blockId);if(block?.type==='table')updateBlock(blockId,{table:{...block.table,columns:block.table.columns.map(c=>c.id===columnId?{...c,hidden:!c.hidden}:c)}});}}
             demo={demo}
             board={{
@@ -1074,6 +1022,7 @@ export default function Editor({
         </BoardStage>
         {properties && !present && (
           <Properties
+            panelWidth={propertyWidth} onPanelResize={width=>{setPropertyWidth(width);localStorage.setItem("maiboard-properties-width",width);}}
             board={board}
             selected={selected}
             updateBlock={updateBlock}
@@ -1200,25 +1149,7 @@ export default function Editor({
           </form>
         </Modal>
       )}
-      {modal?.type === "leave" && (
-        <Modal
-          title="Your cloud save needs attention."
-          onClose={() => setModal(null)}
-        >
-          <p>
-            Your changes could not be saved to Firebase. A recovery draft is
-            kept in this browser for this account and project.
-          </p>
-          <div className="modal-actions">
-            <button className="btn" onClick={() => setModal(null)}>
-              Keep editing
-            </button>
-            <button className="btn primary" onClick={() => modal.action()}>
-              Leave with browser draft
-            </button>
-          </div>
-        </Modal>
-      )}
+      {modal?.type === 'leave' && <Modal title="Leave without saving?" onClose={()=>setModal(null)}><p>Your changes have not been saved and will not apply if you leave. Click Save to keep them.</p><ErrorMessage>{saveError}</ErrorMessage><div className="modal-actions"><button className="btn" onClick={()=>setModal(null)}>Keep editing</button><button className="btn danger" onClick={()=>{allowNavigation.current=true;modal.action();}}>Discard changes and leave</button><button className="btn primary" disabled={saveState==='saving'} onClick={async()=>{if(await persist()){allowNavigation.current=true;modal.action();}}}>Save and leave</button></div></Modal>}
       {modal?.type === "group" && (
         <Modal
           title={modal.group ? "Rename group" : "Organize your layers"}
@@ -1392,7 +1323,7 @@ export default function Editor({
               rename it.
             </li>
             <li>
-              Publish creates a read-only URL. Live mode is private and only allows adding table rows.
+              Publish creates a read-only URL. Live mode lets owners and editors modify table data without changing the board layout.
             </li>
           </ul>
           <p className="muted">

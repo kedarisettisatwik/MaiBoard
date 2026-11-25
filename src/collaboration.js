@@ -53,7 +53,7 @@ export function mergeEntries(board, entries) {
     for (const entry of entries.filter(e => e.tableId === b.id)) {
       const row = table.columns.map(c => c.id === AUDIT_BY ? entry.createdByName : c.id === AUDIT_ON ? String(entry.createdAt?.toDate?.().toISOString() || entry.createdOn || '').slice(0,10) : entry.values[entry.columnIds.indexOf(c.id)] ?? '');
       table.rows.push(row);
-      table.rowMeta.push({ id: entry.id, tableId:b.id, entry: true, uid: entry.createdByUid, name: entry.createdByName, createdAt: entry.createdOn });
+      table.rowMeta.push({ id: entry.id, tableId:b.id, entry: true, uid: entry.createdByUid, name: entry.createdByName, createdAt: entry.createdAt?.toDate?.().toISOString() || entry.createdOn });
     }
   }
   return next;

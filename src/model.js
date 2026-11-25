@@ -19,6 +19,7 @@ export const defaultStyle = {
   fontSize: 16,
   padding: 24,
   opacity: 1,
+  boxShadow: true,
 };
 export function safeUrl(value) {
   try {
@@ -504,7 +505,7 @@ export function parentBounds(board, block) {
     return {
       x: 12,
       y: 12,
-      w: Math.max(20, tabs.w - (tabs.tabLayout === "vertical" ? 130 : 0) - 26),
+      w: Math.max(20, tabs.w - (tabs.tabLayout === "vertical" ? verticalTabWidth(tabs) + 6 : 0) - 26),
       h: Math.max(20, (tabs.h || 280) - 110),
     };
   return { x: 0, y: 0, w: 12000, h: 8000 };
@@ -816,3 +817,5 @@ export function appendLiveRow(board,blockId,values,columnIds){
   if(block.table.rows.length>=5000)throw Error('This table has reached its row limit.');
   return {...board,blocks:board.blocks.map(b=>b.id===blockId?{...b,table:{...b.table,rows:[...b.table.rows,[...values]]}}:b)};
 }
+
+export function verticalTabWidth(block){return Math.round(Math.max(80,Math.min(600,(block.w||340)*0.6,Number(block.tabNavWidth)||130)));}
