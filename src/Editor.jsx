@@ -1,8 +1,10 @@
+import {recordInteraction,applyViewerProgress,readCachedProgress,cacheProgress} from './viewerProgress';
 import {combineSavedBoard,savedAdditions,protectSavedSource} from './savedWorkspace';
-import {useUnsavedChanges} from './WorkspaceControls';
+import {useUnsavedChanges,useProjectCamera} from './WorkspaceControls';
+import {cameraForView,readProjectZoom} from './camera';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  loadProject, getPublication, loadSavedAdditions, saveSavedAdditions,
+  loadProject, getPublication, loadSavedAdditions, saveSavedAdditions, loadViewerProgress,saveViewerProgress,
   saveProject,
   uploadCSV,
   uploadImage,
@@ -69,7 +71,6 @@ export default function Editor({
     [retry, setRetry] = useState(0),
     [selected, setSelected] = useState(null),
     [tool, setTool] = useState("select"),
-    [view, setView] = useState({ x: 0, y: 0, z: 0.85 }),
     [layers, setLayers] = useState(innerWidth > 800),
     [properties, setProperties] = useState(innerWidth > 1100),
     [saveState, setSaveState] = useState("saved"),
@@ -86,6 +87,9 @@ export default function Editor({
     [present, setPresent] = useState(false),
     [activeViewId, setActiveViewId] = useState(null),
     [runtimeTabs, setRuntimeTabs] = useState({});
+  const cameraKey=personal?`saved/${user?.uid}/${id}`:demo?`demo/${initialBoard?.name||'playground'}`:`${ownerUid}/${id}`;
+  const [view,setView,cameraRef]=useProjectCamera(cameraKey,{x:0,y:0,z:0.85});
+  const framedCameraKey=useRef(null);
   const currentView =
     activeViewId || board?.startViewId || board?.views?.[0]?.id || "view-1";
   const boardRef = useRef(board),
@@ -99,14 +103,14 @@ export default function Editor({
     fileInput = useRef(),
     stageRef = useRef(),
     activeEditor = useRef(null);
-  const allowNavigation=useRef(false),savedSource=useRef(null);
+  const allowNavigation=useRef(false),savedSource=useRef(null),savedProgress=useRef({version:1,blocks:{}}),savedProgressQueue=useRef(Promise.resolve()),savedProgressRevision=useRef(0);
   const onEditor = useCallback((editor) => (activeEditor.current = editor), []);
   useUnsavedChanges(()=>!demo&&version.current!==savedVersion.current&&!allowNavigation.current,action=>setModal({type:"leave",action}));
   useEffect(() => {
     if (demo) return;
     let cancelled = false;
     setLoadError("");
-    (personal?Promise.all([getPublication(id),loadSavedAdditions(id)]).then(([p,overlay])=>{savedSource.current=upgradeBoard(JSON.parse(p.boardJson));return {...p,boardJson:JSON.stringify(combineSavedBoard(savedSource.current,overlay))};}):loadProject(ownerUid, id))
+    (personal?Promise.all([getPublication(id),loadSavedAdditions(id),loadViewerProgress(id,user.uid)]).then(([p,overlay,cloud])=>{savedSource.current=upgradeBoard(JSON.parse(p.boardJson));const cached=readCachedProgress(id,user.uid);savedProgress.current=cached?.pending?cached.state:cloud;return {...p,boardJson:JSON.stringify(combineSavedBoard(applyViewerProgress(savedSource.current,savedProgress.current),overlay))};}):loadProject(ownerUid, id))
       .then((p) => {
         if (cancelled) return;
         let b = upgradeBoard(JSON.parse(p.boardJson));
@@ -143,7 +147,7 @@ export default function Editor({
       if (!boardRef.current) return;
       if (key !== false) checkpoint(key);
       let next = typeof fn === "function" ? fn(boardRef.current) : fn;
-      if(personal&&savedSource.current)next=protectSavedSource(savedSource.current,next);
+      if(personal&&savedSource.current)next=protectSavedSource(applyViewerProgress(savedSource.current,savedProgress.current),next);
       boardRef.current = next;
       version.current++;
       setBoard(next);
@@ -152,6 +156,7 @@ export default function Editor({
     },
     [checkpoint,personal],
   );
+  const sourceInteraction=(blockId,action)=>{if(!personal)return;try{const state=recordInteraction(savedSource.current,savedProgress.current,blockId,action),at=++savedProgressRevision.current,uid=user.uid;savedProgress.current=state;const next=protectSavedSource(applyViewerProgress(savedSource.current,state),boardRef.current);boardRef.current=next;setBoard(next);cacheProgress(id,uid,state,true);const task=savedProgressQueue.current.catch(()=>{}).then(()=>saveViewerProgress(id,state,uid));savedProgressQueue.current=task;task.then(()=>{if(at===savedProgressRevision.current)cacheProgress(id,uid,state,false);}).catch(e=>notify('Progress could not sync to your account. '+readableError(e)));}catch(e){notify(readableError(e));}};
   const updateBlock = useCallback(
     (blockId, patch, key = true) => {
       const b = boardRef.current,
@@ -298,7 +303,7 @@ export default function Editor({
       ],
     }));
     select(b.id);
-    setTool("select");if(personal)requestAnimationFrame(fit);
+    setTool("select");if(personal)requestAnimationFrame(()=>fit(true));
   };
   const connect = (id) => {
     if (viewIsLocked(boardRef.current, currentView)) {
@@ -397,46 +402,13 @@ export default function Editor({
     lastEdit.current = {};
     change(b, false);
   };
-  const fit = useCallback(() => {
-    const original = boardRef.current;
-    const b = original
-      ? {
-          ...original,
-          blocks: viewBlocks(original, currentView).filter(
-            (b) => !b.tabParentId,
-          ),
-        }
-      : null;
-    if (!b?.blocks.length) {
-      setView({ x: 0, y: 0, z: 1 });
-      return;
-    }
-    const minX = Math.min(...b.blocks.map((b) => b.x)),
-      minY = Math.min(...b.blocks.map((b) => b.y)),
-      maxX = Math.max(...b.blocks.map((b) => b.x + b.w)),
-      maxY = Math.max(...b.blocks.map((b) => b.y + blockHeight(b))),
-      r = stageRef.current?.getBoundingClientRect();
-    if (!r) return;
-    const z = Math.max(
-      0.15,
-      Math.min(
-        1.15,
-        (r.width - 100) / (maxX - minX),
-        (r.height - 160) / (maxY - minY),
-      ),
-    );
-    setView({
-      x: (r.width - (maxX - minX) * z) / 2 - minX * z,
-      y: 20 + (r.height - 160 - (maxY - minY) * z) / 2 - minY * z,
-      z,
-    });
-  }, [currentView]);
-  useEffect(() => {
-    if (board) {
-      setSelected(null);
-      requestAnimationFrame(fit);
-    }
-  }, [currentView, fit]);
+  const fit = useCallback((preserve=false) => {
+    const original=boardRef.current,rect=stageRef.current?.getBoundingClientRect();if(!original||!rect)return;
+    const zoom=preserve===true?(framedCameraKey.current===cameraKey?cameraRef.current.z:readProjectZoom(cameraKey)):null;
+    setView(cameraForView(viewBlocks(original,currentView).filter(b=>!b.tabParentId),rect,zoom));
+    framedCameraKey.current=cameraKey;
+  },[currentView,cameraKey,setView]);
+  useEffect(()=>{if(!board)return;setSelected(null);const frame=requestAnimationFrame(()=>fit(true));return()=>cancelAnimationFrame(frame);},[!!board,currentView,fit]);
   const zoom = (by) =>
     setView((v) => {
       const r = stageRef.current.getBoundingClientRect(),
@@ -447,9 +419,6 @@ export default function Editor({
         z,
       };
     });
-  useEffect(() => {
-    if (board && version.current === 0) requestAnimationFrame(fit);
-  }, [Boolean(board), fit]);
   const requestImport = (blockId) => {
     if (
       blockIsLocked(
@@ -659,7 +628,7 @@ export default function Editor({
                   setActiveViewId(startingView(board));
                   setRuntimeTabs({});
                   setPresent(true);
-                  requestAnimationFrame(fit);
+                  requestAnimationFrame(()=>fit(true));
                 }}
               >
                 <Icon name="Globe" size={16} /> Publish preview
@@ -763,6 +732,8 @@ export default function Editor({
           />
         </div>
       </div>
+      {personal&&<div className="saved-workspace-notice"><Icon name="Lock" size={14}/> Published layout is fixed. Checklists and K boards keep your own progress. Save keeps your added blocks in your account.</div>}
+      <div className={`view-navigation-workspace ${present&&board.showViewNavigation===true&&board.viewNavigationLayout==='vertical'?'navigation-vertical':''}`}>
       {present && (
         <PresentationTabs
           board={board}
@@ -770,7 +741,7 @@ export default function Editor({
           onSelect={setActiveViewId}
         />
       )}
-      {personal&&<div className="saved-workspace-notice"><Icon name="Lock" size={14}/> Published blocks are fixed. Add your own blocks alongside them; Save keeps your additions in your account.</div>}
+
       <div className="editor-body">
         {layers && !present && (
           <Layers
@@ -832,6 +803,11 @@ export default function Editor({
           />
         )}
         <BoardStage
+          runtimeStorageKey={cameraKey}
+          onBlockInteraction={personal?sourceInteraction:undefined}
+          canInteractBlock={block=>personal&&block.sourceBlock}
+          canToggleBoolean={block=>personal&&block.sourceBlock}
+          onToggleBoolean={(block,index,columnId,checked)=>sourceInteraction(block.id,{kind:'boolean',index,columnId,checked})}
           board={board}
           viewId={currentView}
           onNavigate={setActiveViewId}
@@ -1078,6 +1054,7 @@ export default function Editor({
             }
           />
         )}
+      </div>
       </div>
       <input
         ref={fileInput}

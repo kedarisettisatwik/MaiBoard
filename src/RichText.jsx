@@ -9,11 +9,18 @@ import Highlight from "@tiptap/extension-highlight";
 import DOMPurify from "dompurify";
 import { fonts, safeUrl } from "./model";
 import { IconButton, Modal, Field, ErrorMessage } from "./ui";
-export function SafeHTML({ html }) {
+export function SafeHTML({ html,onTaskToggle }) {
+  const root=useRef(null);
+  useEffect(()=>{if(!onTaskToggle)return;for(const item of root.current?.querySelectorAll('li[data-type="taskItem"]')||[]){item.setAttribute('role','checkbox');item.setAttribute('tabindex','0');item.setAttribute('aria-checked',item.dataset.checked==='true'?'true':'false');}},[html,onTaskToggle]);
+  const toggle=e=>{if(!onTaskToggle||e.target.closest('a'))return;const item=e.target.closest('li[data-type="taskItem"]');if(!item||!root.current?.contains(item))return;e.preventDefault();e.stopPropagation();const index=Array.from(root.current.querySelectorAll('li[data-type="taskItem"]')).indexOf(item);onTaskToggle(index,item.dataset.checked!=='true');};
   return (
     <div
-      className="rich-display"
+      className={`rich-display ${onTaskToggle?'interactive-checklist':''}`}
+      ref={root}
+      onPointerDown={e=>{if(onTaskToggle&&e.target.closest('li[data-type="taskItem"]'))e.stopPropagation();}}
+      onKeyDown={e=>{if([' ','Enter'].includes(e.key))toggle(e);}}
       onClick={(e) => {
+        toggle(e);
         const a = e.target.closest("a");
         if (a) {
           if (!safeUrl(a.getAttribute("href"))) e.preventDefault();

@@ -1,3 +1,4 @@
+import {kanbanColumnWidth,readColumnWidths,saveColumnWidths} from './viewerProgress';
 import {ResizeGrip} from './WorkspaceControls';
 import React, { useRef, useState } from "react";
 import { Icon, IconButton, Modal, Field, ErrorMessage } from "./ui";
@@ -15,7 +16,7 @@ export function TabsBlock({
   runtimeTab,
   onTabNavigate,
   onAddToTab,
-  renderCanvas,
+  renderCanvas,onTaskToggle,
 }) {
   const [viewTab, setViewTab] = useState(block.activeTab),
     [open, setOpen] = useState({});
@@ -29,7 +30,7 @@ export function TabsBlock({
       ) : t.contentType === "blocks" || block.childrenMode ? (
         renderCanvas?.(t)
       ) : readOnly ? (
-        <SafeHTML html={t.html} />
+        <SafeHTML html={t.html} onTaskToggle={onTaskToggle?(index,checked)=>onTaskToggle(t.id,index,checked):undefined}/>
       ) : (
         <RichText
           key={t.id}
@@ -196,7 +197,11 @@ export function ImageBlock({ block, readOnly, update, onUpload }) {
   );
 }
 
-export function KanbanBlock({ block, readOnly, update }) {
+export function KanbanBlock({ block, readOnly, interactive=false, runtimeKey='project', update }) {
+  const widthKey=runtimeKey+'/'+block.id;
+  const [widths,setWidths]=useState(()=>readOnly?readColumnWidths(widthKey):{});
+  const canUseCards=!readOnly||interactive;
+  const resizeColumn=(column,width)=>{if(readOnly){const next={...widths,[column.id]:width};setWidths(next);saveColumnWidths(widthKey,next);}else update({kanban:{...block.kanban,columns:block.kanban.columns.map(c=>c.id===column.id?{...c,width}:c)}},'kanban-column-width');};
   const [editing, setEditing] = useState(null);
   const data = block.kanban;
   const saveColumn = (id, name) =>
@@ -218,11 +223,12 @@ export function KanbanBlock({ block, readOnly, update }) {
             <section
               key={column.id}
               className="kanban-column"
+              style={{width:readOnly?kanbanColumnWidth({width:widths[column.id]||column.width}):kanbanColumnWidth(column),minWidth:180,position:'relative'}}
               onDragOver={(e) => {
-                if (!readOnly) e.preventDefault();
+                if (canUseCards) e.preventDefault();
               }}
               onDrop={(e) => {
-                if (readOnly) return;
+                if (!canUseCards) return;
                 e.preventDefault();
                 try {
                   const transfer = JSON.parse(
@@ -252,7 +258,7 @@ export function KanbanBlock({ block, readOnly, update }) {
                 >
                   {cards.length}
                 </span>
-                {!readOnly && (
+                {canUseCards && (
                   <>
                     <IconButton
                       icon="Plus"
@@ -267,7 +273,7 @@ export function KanbanBlock({ block, readOnly, update }) {
                         })
                       }
                     />
-                    <IconButton
+                    {!readOnly&&<IconButton
                       icon="Trash2"
                       title={`Delete ${column.name} column and move its cards`}
                       disabled={data.columns.length <= 1}
@@ -289,7 +295,7 @@ export function KanbanBlock({ block, readOnly, update }) {
                           "delete-kanban-column",
                         );
                       }}
-                    />
+                    />}
                   </>
                 )}
               </header>
@@ -298,7 +304,7 @@ export function KanbanBlock({ block, readOnly, update }) {
                   <article
                     key={card.id}
                     className="kanban-card"
-                    draggable={!readOnly}
+                    draggable={canUseCards}
                     onDragStart={(e) =>
                       e.dataTransfer.setData(
                         "application/maiboard-card",
@@ -308,11 +314,9 @@ export function KanbanBlock({ block, readOnly, update }) {
                   >
                     <strong>{card.title}</strong>
                     {card.description && <p>{card.description}</p>}
-                    {!readOnly && (
+                    {canUseCards && (
                       <div className="card-actions">
-                        <button onClick={() => setEditing({ ...card })}>
-                          Edit / move
-                        </button>
+                        <IconButton icon="Pencil" title={`Edit or move ${card.title}`} onClick={()=>setEditing({...card})}/>
                         <IconButton
                           icon="Trash2"
                           title={`Delete card ${card.title}`}
@@ -336,11 +340,11 @@ export function KanbanBlock({ block, readOnly, update }) {
                 ))}
                 {!cards.length && (
                   <span className="kanban-empty">
-                    {readOnly ? "No items" : "Drop a card here"}
+                    {canUseCards ? "Drop a card here" : "No items"}
                   </span>
                 )}
               </div>
-              {!readOnly && (
+              {canUseCards && (
                 <button
                   className="kanban-add"
                   onClick={() =>
@@ -356,6 +360,7 @@ export function KanbanBlock({ block, readOnly, update }) {
                   <Icon name="Plus" size={15} /> Add item
                 </button>
               )}
+              <ResizeGrip scaled label={`Resize ${column.name} column`} value={readOnly?kanbanColumnWidth({width:widths[column.id]||column.width}):kanbanColumnWidth(column)} min={180} max={640} reset={readOnly?kanbanColumnWidth(column):245} onChange={width=>resizeColumn(column,width)}/>
             </section>
           );
         })}
@@ -639,6 +644,7 @@ export function ExtraProperties({ board, block, update }) {
           </Field>
         </>
       )}
+      {block.type === "kanban" && <div><h3>Column widths</h3>{block.kanban.columns.map(column=><Field key={column.id} label={`${column.name} width (px)`}><input type="number" min="180" max="640" value={kanbanColumnWidth(column)} onChange={e=>update({kanban:{...block.kanban,columns:block.kanban.columns.map(c=>c.id===column.id?{...c,width:Math.max(180,Math.min(640,+e.target.value||245))}:c)}},'kanban-column-width')}/></Field>)}</div>}
       {block.type === "kanban" && (
         <p className="property-hint">
           Use + in a column to add an item. Drag cards between columns, or

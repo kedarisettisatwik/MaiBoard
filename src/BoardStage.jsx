@@ -221,6 +221,7 @@ export default function BoardStage({
   onAddLiveRow,
   canAddRow, canDeleteRow, onDeleteLiveRow, onToggleBoolean, canToggleBoolean,
   editTableData=false, onTableDataChange,
+  onBlockInteraction,canInteractBlock,runtimeStorageKey='board',
   onDuplicate,
   onTransfer,
   onUploadImage,
@@ -519,6 +520,7 @@ export default function BoardStage({
               (a.type === "section" ? 0 : 1) - (b.type === "section" ? 0 : 1),
           )
           .map((block) => {
+            const interactive=!!onBlockInteraction&&(!canInteractBlock||canInteractBlock(block));
             const locked = blockIsLocked(board, block, viewId),
               contentReadOnly = readOnly || locked;
             const s = { ...defaultStyle, ...block.style },
@@ -665,6 +667,7 @@ export default function BoardStage({
                     runtimeTab={runtimeTabs[block.id]}
                     onTabNavigate={onTabNavigate}
                     onAddToTab={onAddToTab}
+                    onTaskToggle={interactive?(tabId,index,checked)=>onBlockInteraction(block.id,{kind:'checklist',tabId,index,checked}):undefined}
                     renderCanvas={(tab, referenceViewId) => (
                       <TabCanvas
                         board={board}
@@ -685,6 +688,7 @@ export default function BoardStage({
                           onEditor,
                           onImport,
                           onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow, onToggleBoolean, canToggleBoolean, editTableData, onTableDataChange,
+                          onBlockInteraction,canInteractBlock,runtimeStorageKey,
                           onUploadImage,
                           onAddToTab,
                           onNavigate,
@@ -710,14 +714,16 @@ export default function BoardStage({
                   <KanbanBlock
                     block={block}
                     readOnly={contentReadOnly}
-                    update={update}
+                    interactive={interactive}
+                    runtimeKey={runtimeStorageKey}
+                    update={interactive&&contentReadOnly?(patch)=>onBlockInteraction(block.id,{kind:'kanban',kanban:patch.kanban}):update}
                   />
                 ) : block.type === "section" ? (
                   <div className="section-interior" />
                 ) : (
                   <div className="block-content" style={{ padding: s.padding }}>
                     {contentReadOnly ? (
-                      <SafeHTML html={block.html} />
+                      <SafeHTML html={block.html} onTaskToggle={interactive?(index,checked)=>onBlockInteraction(block.id,{kind:'checklist',index,checked}):undefined}/>
                     ) : (
                       <RichText
                         value={block.html}

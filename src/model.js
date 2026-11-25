@@ -35,6 +35,7 @@ export function blankBoard(name = "Untitled project") {
   return {
     version: 2,
     showViewNavigation: false,
+    viewNavigationLayout: 'horizontal',
     name,
     groups: [],
     blocks: [],

@@ -3,16 +3,18 @@ import { IconButton, Modal, Field } from "./ui";
 import { uid, projectViews, copyView } from "./model";
 import { presentationTabs } from "./model";
 export function PresentationTabs({ board, current, onSelect }) {
-  const tabs = presentationTabs(board);
+  const tabs = presentationTabs(board),vertical=board.viewNavigationLayout==='vertical';
   if (board.showViewNavigation!==true || tabs.length < 2) return null;
   return (
-    <nav className="presentation-tabs" aria-label="Presentation views">
-      <div role="tablist">
+    <nav className={`presentation-tabs ${vertical?'vertical':'horizontal'}`} aria-label="Presentation views">
+      <div role="tablist" aria-orientation={vertical?'vertical':'horizontal'}>
         {tabs.map((t) => (
           <button
             role="tab"
             key={t.id}
             aria-selected={t.viewId === current}
+            tabIndex={t.viewId===current?0:-1}
+            onKeyDown={e=>{const nextKey=vertical?'ArrowDown':'ArrowRight',previousKey=vertical?'ArrowUp':'ArrowLeft';if(![nextKey,previousKey,'Home','End'].includes(e.key))return;e.preventDefault();const index=tabs.findIndex(tab=>tab.id===t.id),next=e.key==='Home'?0:e.key==='End'?tabs.length-1:(index+(e.key===nextKey?1:-1)+tabs.length)%tabs.length;onSelect(tabs[next].viewId);e.currentTarget.parentElement.querySelectorAll('[role="tab"]')[next]?.focus();}}
             className={t.viewId === current ? "active" : ""}
             onClick={() => onSelect(t.viewId)}
           >
@@ -32,7 +34,7 @@ export default function Views({ board, current, onSelect, change }) {
   return (
     <div className="view-controls">
       <IconButton icon="Settings2" title="View navigation settings" onClick={()=>setNavigationSettings(true)}/>
-      {navigationSettings&&<Modal title="Project view navigation" onClose={()=>setNavigationSettings(false)}><label className="view-navigation-option"><input type="checkbox" checked={board.showViewNavigation===true} onChange={e=>change(b=>({...b,showViewNavigation:e.target.checked}))}/> Show view navigation</label><p>Off by default. Published and Live modes hide the top view tabs. Use your own buttons to move between views. Tabs inside your blocks remain available.</p><button className="btn primary" onClick={()=>setNavigationSettings(false)}>Done</button></Modal>}
+      {navigationSettings&&<Modal title="Project view navigation" onClose={()=>setNavigationSettings(false)}><label className="view-navigation-option"><input type="checkbox" checked={board.showViewNavigation===true} onChange={e=>change(b=>({...b,showViewNavigation:e.target.checked}))}/> Show view navigation</label>{board.showViewNavigation===true&&<Field label="View tabs layout"><select value={board.viewNavigationLayout==='vertical'?'vertical':'horizontal'} onChange={e=>change(b=>({...b,viewNavigationLayout:e.target.value}))}><option value="horizontal">Horizontal — top</option><option value="vertical">Vertical — left</option></select></Field>}<p>Choose top tabs or a left sidebar for Live and Publish. Navigation stays hidden when this option is off; your own navigation buttons and tabs inside blocks remain available.</p><button className="btn primary" onClick={()=>setNavigationSettings(false)}>Done</button></Modal>}
       <select
         aria-label="Current view"
         value={current}

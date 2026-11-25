@@ -199,3 +199,16 @@ Saved personal workspaces include a Live-mode (Play) icon. Save additions first,
 
 
 Entity owners can delete an entity using the red trash icon on its Tables card. A confirmation explains that the source entity and stored records are permanently removed, while published snapshots remain unchanged. Designated editors cannot delete an entity. A revision check rejects deletion if the source changed while the confirmation was open. Projects referencing a deleted entity remain openable: the missing source becomes a local table with its saved columns, no source records, and a notice prompting the user to link a replacement or save the local table.
+
+
+### View navigation, shared zoom and viewer progress
+
+Project view navigation settings now offer Horizontal — top and Vertical — left when Show view navigation is enabled. This is independent of tabs blocks. Save the project and republish to update shared links. Both layouts support arrow-key navigation; vertical tabs wrap long names and scroll within the left sidebar.
+
+Zoom is a browser preference shared by all views of the same project, including Editor, Live and Publish. Switching views centers the new content at the current zoom instead of refitting it. Empty views retain the same zoom. Reopening restores the project zoom; Fit explicitly calculates a new zoom. Personal saved workspaces have a separate zoom preference shared by their editor and Live view.
+
+Published task-list checkboxes, Boolean table cells and K-board cards are interactive. Signed-in viewers store personal progress in their own users/{uid}/saved/{publicationId}/workspace/progress document; signed-out public visitors store it only in their browser's local storage. Signed-in progress also keeps a browser draft until cloud sync succeeds. Each viewer's source layout remains unchanged. Existing creator-only team Boolean updates still update the creator's actual submission; other published checkbox interactions are personal progress. K-board card creation, editing, moving and deletion update that viewer's cards; authored column names and structure remain fixed in read-only modes. Reports use the displayed viewer-specific data. If task text or card source content changes on republish, incompatible saved overrides are ignored.
+
+Owners/editors in Live mode can toggle checklists and manage K-board cards as working-project data, staged until Save. Saved personal workspaces keep source interactions as account progress and save their own added-block data separately. Source permissions still apply before any publication or personal workspace is loaded.
+
+Each K-board column has a draggable right-edge resize grip (180–640px) and a Width property in the editor. Editor widths are authored project defaults saved with the project. Live and Publish column-width changes are stored only in local storage, whether signed in or out. These width preferences do not write to the owner project or the viewer's cloud progress.

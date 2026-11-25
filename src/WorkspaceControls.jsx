@@ -1,4 +1,16 @@
-import React,{useEffect,useRef} from 'react';
+import React,{useCallback,useEffect,useRef,useState} from 'react';
+import {rememberProjectZoom} from './camera';
+
+export function useProjectCamera(key,initial){
+  const [view,setState]=useState(initial),current=useRef(view),keyRef=useRef(key),stored=useRef(null);
+  keyRef.current=key;
+  const setView=useCallback(update=>{
+    const previous=current.current,next=typeof update==='function'?update(previous):update;
+    current.current=next;setState(next);
+    const stamp=keyRef.current+':'+next.z;if(stored.current!==stamp){rememberProjectZoom(keyRef.current,next.z);stored.current=stamp;}
+  },[]);
+  return [view,setView,current];
+}
 
 export function useUnsavedChanges(when,onLeave){
   const current=useRef({when,onLeave});current.current={when,onLeave};
