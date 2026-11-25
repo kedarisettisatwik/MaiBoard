@@ -43,13 +43,14 @@ export default function Properties({
   onArrange,
   currentView,
   onUnlock,
-  panelWidth,onPanelResize,sharing,
+  panelWidth,onPanelResize,sharing,personal,
 }) {
   const block = board.blocks.find((b) => b.id === selected),
     edge = board.edges.find((e) => e.id === selected),
     [column, setColumn] = useState(""),[backgroundDraft,setBackgroundDraft]=useState(''),[borderDraft,setBorderDraft]=useState('');
   useEffect(()=>setBackgroundDraft(block?.style?.background||defaultStyle.background),[selected,block?.style?.background]);
   useEffect(()=>setBorderDraft(block?.style?.borderColor||defaultStyle.borderColor),[selected,block?.style?.borderColor]);
+  if(block?.sourceBlock||edge?.sourceEdge)return <aside className="properties-panel resizable-panel" style={{width:panelWidth}}><div className="panel-heading"><h2>Published source</h2><IconButton icon="PanelRightClose" title="Hide properties" onClick={onClose}/></div><div className="properties-empty"><Icon name="Lock" size={28}/><h3>This belongs to the published project.</h3><p>Add your own blocks alongside it. Your additions are saved privately in your account.</p></div></aside>;
   if (!block && !edge)
     return (
       <aside className="properties-panel resizable-panel" style={{width:panelWidth}}>
@@ -190,8 +191,8 @@ export default function Properties({
             </section>
             <div inert={locked ? true : undefined}>
               <ExtraProperties board={board} block={block} update={update} />
-              {block.type==='table'&&<><EntityLink block={block} update={update}/><TeamTableProperties block={block} update={update}/></>}
-              {block.type==='section'&&sharing?.audience==='emails'&&<section className="property-section"><h3>Grants</h3><p className="property-hint">Only checked recipients can view this section and its nested blocks. Owners and editors retain editing access.</p>{[...new Set([...sharing.viewerEmails,...sharing.editorEmails])].map(email=><label key={email}><input type="checkbox" checked={!Array.isArray(block.grantEmails)||block.grantEmails.includes(email)} onChange={e=>{const current=block.grantEmails||[...new Set([...sharing.viewerEmails,...sharing.editorEmails])];update({grantEmails:e.target.checked?[...current,email]:current.filter(x=>x!==email)},'section-grants');}}/>{email}</label>)}{!sharing.viewerEmails.length&&!sharing.editorEmails.length&&<p>Add recipient emails in Sharing first.</p>}</section>}
+              {block.type==='table'&&<>{!personal&&<EntityLink block={block} update={update}/>}<TeamTableProperties block={block} update={update}/></>}
+              {block.type==='section'&&!personal&&sharing?.audience==='emails'&&<section className="property-section"><h3>Grants</h3><p className="property-hint">Only checked recipients can view this section and its nested blocks. Owners and editors retain editing access.</p>{[...new Set([...sharing.viewerEmails,...sharing.editorEmails])].map(email=><label key={email}><input type="checkbox" checked={!Array.isArray(block.grantEmails)||block.grantEmails.includes(email)} onChange={e=>{const current=block.grantEmails||[...new Set([...sharing.viewerEmails,...sharing.editorEmails])];update({grantEmails:e.target.checked?[...current,email]:current.filter(x=>x!==email)},'section-grants');}}/>{email}</label>)}{!sharing.viewerEmails.length&&!sharing.editorEmails.length&&<p>Add recipient emails in Sharing first.</p>}</section>}
             </div>
             <section
               className="property-section"

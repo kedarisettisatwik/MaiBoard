@@ -66,12 +66,17 @@ service cloud.firestore {
       allow read: if owner(resource.data.ownerUid) || (emailAccount() && resource.data.email == email());
       allow create: if validInvite();
       allow update: if request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.projectId == resource.data.projectId && request.resource.data.email == resource.data.email && validInvite();
-      function validInvite() { return request.resource.data.keys().hasOnly(['ownerUid','projectId','email','name','role']) && owner(request.resource.data.ownerUid) && request.resource.data.role == 'editor' && request.resource.data.email in settings(getAfter(/databases/$(database)/documents/users/$(request.resource.data.ownerUid)/projects/$(request.resource.data.projectId)).data).editorEmails; }
+      function validInvite() { return request.resource.data.keys().hasOnly(['ownerUid','projectId','email','name','role','publicationId']) && owner(request.resource.data.ownerUid) && ((request.resource.data.role == 'editor' && request.resource.data.email in settings(getAfter(/databases/$(database)/documents/users/$(request.resource.data.ownerUid)/projects/$(request.resource.data.projectId)).data).editorEmails) || (request.resource.data.role == 'viewer' && request.resource.data.email in settings(getAfter(/databases/$(database)/documents/users/$(request.resource.data.ownerUid)/projects/$(request.resource.data.projectId)).data).viewerEmails)); }
       allow delete: if owner(resource.data.ownerUid);
     }
     match /users/{uid}/saved/{id} {
       allow read,delete: if owner(uid);
       allow create,update: if owner(uid) && request.resource.data.keys().hasOnly(['name','publicationId','savedAt']) && request.resource.data.publicationId == id && request.resource.data.name is string && request.resource.data.name.size() <= 100 && request.resource.data.savedAt == request.time;
+    }
+    match /users/{uid}/saved/{publicationId}/workspace/{workspaceId} {
+      allow read: if owner(uid);
+      allow create,update: if owner(uid) && request.resource.data.keys().hasOnly(['boardJson','updatedAt']) && request.resource.data.boardJson is string && request.resource.data.boardJson.size() <= 800000 && request.resource.data.updatedAt == request.time;
+      allow delete: if owner(uid);
     }
     match /publications/{shareId} {
       function valid(d) { return d.ownerUid is string && d.projectId is string && d.name is string && d.name.size() <= 100 && d.boardJson is string && d.boardJson.size() <= 800000 && sharingValid(d.sharing) && d.schemaVersion == 2 && d.generation is string && d.publishedAt == request.time && d.keys().hasOnly(['ownerUid','projectId','name','boardJson','publishedAt','sharing','generation','schemaVersion','recipientMode']); }

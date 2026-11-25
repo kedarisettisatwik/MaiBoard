@@ -68,13 +68,14 @@ export default function App() {
       notify(readableError(e));
     }
   };
+  const savedEditId=route.startsWith('/saved-edit/')?route.slice(12):null;
   const liveId = route.startsWith('/live/') ? route.slice(6) : null,
     viewerId = route.startsWith("/view/") ? route.slice(6) : null,
     projectId = route.startsWith("/project/") ? route.slice(9) : null;
   return (
     <>
       <Suspense fallback={<Spinner />}>
-        {liveId ? (!authReady ? <Spinner/> : user ? <EditorSession key={`${liveId.includes('/')?liveId.split('/')[0]:user.uid}/${liveId.split('/').at(-1)}`} ownerUid={liveId.includes('/')?liveId.split('/')[0]:user.uid} id={liveId.split('/').at(-1)} user={user} onExit={()=>navigate('/')}>{sessionId=><Viewer id={liveId.split('/').at(-1)} ownerUid={liveId.includes('/')?liveId.split('/')[0]:user.uid} sessionId={sessionId} live user={user}/>}</EditorSession> : <div className="load-error"><Logo/><h1>Sign in to open Live mode</h1><p>Owners and invited editors can manage table data.</p><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : viewerId ? (
+        {savedEditId ? (!authReady?<Spinner/>:user?<Editor key={'saved-'+savedEditId} personal id={savedEditId} ownerUid={user.uid} user={user} notify={notify} onExit={()=>navigate('/')} onLogout={logout}/>:<div className="load-error"><Logo/><h1>Sign in to edit your additions</h1><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : liveId ? (!authReady ? <Spinner/> : user ? <EditorSession key={`${liveId.includes('/')?liveId.split('/')[0]:user.uid}/${liveId.split('/').at(-1)}`} ownerUid={liveId.includes('/')?liveId.split('/')[0]:user.uid} id={liveId.split('/').at(-1)} user={user} onExit={()=>navigate('/')}>{sessionId=><Viewer id={liveId.split('/').at(-1)} ownerUid={liveId.includes('/')?liveId.split('/')[0]:user.uid} sessionId={sessionId} live user={user}/>}</EditorSession> : <div className="load-error"><Logo/><h1>Sign in to open Live mode</h1><p>Owners and invited editors can manage table data.</p><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : viewerId ? (
           <Viewer id={viewerId} user={user} onSignIn={()=>setAuthMode("signin")} />
         ) : (route === "/demo" || route.startsWith("/sample/")) ? (
           <Editor
@@ -151,7 +152,7 @@ function AuthModal({ mode, setMode, onClose, notify }) {
       } else {
         await signInWithEmailAndPassword(auth, email, password);
         onClose();
-        if (!/\/(project|live|view)\//.test(location.hash)) navigate("/");
+        if (!/\/(project|live|view|saved-edit)\//.test(location.hash)) navigate("/");
       }
     } catch (e) {
       setError(readableError(e));
@@ -282,7 +283,7 @@ function AuthModal({ mode, setMode, onClose, notify }) {
 }
 function Dashboard({ user, notify, onLogout }) {
   const [projects, setProjects] = useState([]),
-    [shared,setShared]=useState([]),[saved,setSaved]=useState([]),[tab,setTab]=useState("all"),[creating,setCreating]=useState(null),
+    [shared,setShared]=useState([]),[added,setAdded]=useState([]),[saved,setSaved]=useState([]),[tab,setTab]=useState("all"),[creating,setCreating]=useState(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [search, setSearch] = useState(""),
@@ -304,9 +305,10 @@ function Dashboard({ user, notify, onLogout }) {
       },
     );
   }, [user.uid, retry]);
-  useEffect(()=>{const stops=[watchSaved(user.uid,setSaved,e=>notify(readableError(e)))];if(user.email)stops.push(watchShared(user.email,setShared,e=>notify(readableError(e))));return()=>stops.forEach(stop=>stop());},[user.uid,user.email]);
+  useEffect(()=>{const stops=[watchSaved(user.uid,setSaved,e=>notify(readableError(e)))];if(user.email)stops.push(watchShared(user.email,items=>{setShared(items.filter(p=>p.role==='editor'));setAdded(items);},e=>notify(readableError(e))));return()=>stops.forEach(stop=>stop());},[user.uid,user.email]);
   const make = () => setCreating(blankBoard('Untitled'));
-  const sourceProjects=tab==='shared'?shared:tab==='saved'?saved:projects;
+  const savedMap=new Map(saved.map(p=>[p.publicationId,{...p,bookmark:true}]));for(const invite of added){const key=invite.publicationId||invite.id;savedMap.set(key,{...invite,...savedMap.get(key),id:key,added:true});}const savedProjects=[...savedMap.values()];
+  const sourceProjects=tab==='shared'?shared:tab==='saved'?savedProjects:projects;
   const filtered = sourceProjects.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())),
     displayName = user.displayName || user.email?.split("@")[0] || "Creator";
   return (
@@ -343,7 +345,7 @@ function Dashboard({ user, notify, onLogout }) {
         </section>
         <div className="dashboard-filter">
           <div className="project-filter">
-            {[['all','All projects',projects.length],['shared','Shared',shared.length],['tables','Tables',''],['saved','Saved',saved.length]].map(([value,label,count])=><button key={value} className={`btn ${tab===value?'primary':'subtle'}`} onClick={()=>setTab(value)}>{label} <span>{count}</span></button>)}
+            {[['all','All projects',projects.length],['shared','Shared',shared.length],['tables','Tables',''],['saved','Saved',savedProjects.length]].map(([value,label,count])=><button key={value} className={`btn ${tab===value?'primary':'subtle'}`} onClick={()=>setTab(value)}>{label} <span>{count}</span></button>)}
           </div>
           <label className="search-field">
             <Icon name="Search" size={17} />
@@ -377,7 +379,7 @@ function Dashboard({ user, notify, onLogout }) {
                   <button
                     className="project-preview"
                     onClick={() => openProjectTab(tab==='saved'?`/view/${p.publicationId}`:tab==='shared'?`/project/${p.ownerUid}/${p.projectId}`:`/project/${p.id}`)}
-                    aria-label={`Open ${p.name}`}
+                    aria-label={`Open ${p.name}`} disabled={tab==='saved'&&!p.publicationId}
                   >
                     <MiniBoard board={board} />
                     {p.publicationId && (
@@ -387,21 +389,22 @@ function Dashboard({ user, notify, onLogout }) {
                     )}
                   </button>
                   <div className="project-card-info">
-                    <button onClick={() => openProjectTab(tab==='saved'?`/view/${p.publicationId}`:tab==='shared'?`/project/${p.ownerUid}/${p.projectId}`:`/project/${p.id}`)}>
+                    <button disabled={tab==='saved'&&!p.publicationId} onClick={() => openProjectTab(tab==='saved'?`/view/${p.publicationId}`:tab==='shared'?`/project/${p.ownerUid}/${p.projectId}`:`/project/${p.id}`)}>
                       <h3>{p.name}</h3>
                       <p>
-                        {tab==='saved'?'Published link':tab==='shared'?'Shared editor access':`${p.blockCount||0} blocks`} <span>·</span>{" "}
+                        {tab==='saved'?(p.publicationId?'Published link':'Awaiting publication'):tab==='shared'?'Shared editor access':`${p.blockCount||0} blocks`} <span>·</span>{" "}
                         {(p.updatedAt||p.savedAt)?.toDate?.().toLocaleDateString(undefined, {
                           month: "short",
                           day: "numeric",
                         }) || "Just created"}
                       </p>
                     </button>
+                    {tab==='saved'&&<div className="saved-card-actions"><IconButton icon="Eye" title="Published view" disabled={!p.publicationId} onClick={()=>openProjectTab('/view/'+p.publicationId)}/><IconButton icon="Pencil" title="Edit my additions" disabled={!p.publicationId} onClick={()=>openProjectTab('/saved-edit/'+p.publicationId)}/></div>}
                     <IconButton
                       icon="Trash2"
                       title={`${tab==='saved'?'Remove saved link':'Delete'} ${p.name}`}
                       onClick={async () => {if(tab==='saved'){try{await removeBookmark(p.id);}catch(e){notify(e.message);}}else if(tab==='all')setDeleting(p);}}
-                      disabled={tab==='shared'}
+                      disabled={tab==='shared'||(tab==='saved'&&!p.bookmark)}
                     />
                   </div>
                 </article>

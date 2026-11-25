@@ -525,7 +525,7 @@ export default function BoardStage({
                 ? tabState[block.id] || block.activeTab
                 : block.activeTab,
               tab = block.tabs?.find((t) => t.id === tabId) || block.tabs?.[0];
-            const update = (patch, key) => onUpdate?.(block.id, patch, key);
+            const update = (patch, key) => !block.sourceBlock&&onUpdate?.(block.id, patch, key);
             return (
               <article
                 data-block={block.id}
@@ -572,7 +572,7 @@ export default function BoardStage({
                     <IconButton
                       icon={locked ? "Lock" : "Unlock"}
                       title={`${block.locked ? "Unlock" : "Lock"} block ${block.name}`}
-                      disabled={viewIsLocked(board, viewId)}
+                      disabled={block.sourceBlock||viewIsLocked(board, viewId)}
                       active={locked}
                       onClick={() =>
                         onUpdate?.(block.id, { locked: !block.locked })
@@ -588,7 +588,7 @@ export default function BoardStage({
                 {block.type === "table" ? (
                   <TableBlock
                     block={block}
-                    readOnly={readOnly}
+                    readOnly={readOnly||block.sourceBlock===true}
                     update={editTableData?(patch)=>onTableDataChange?.(block.id,patch.table):update}
                     editData={editTableData}
                     onImport={onImport}
@@ -748,7 +748,7 @@ export default function BoardStage({
           {context.kind !== "edge" && (
             <button
               role="menuitem"
-              disabled={viewIsLocked(board, viewId)}
+              disabled={block.sourceBlock||viewIsLocked(board, viewId)}
               onClick={() => {
                 onDuplicate?.(context.id);
                 setContext(null);

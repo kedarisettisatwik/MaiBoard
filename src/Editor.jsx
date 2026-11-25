@@ -1,7 +1,8 @@
+import {combineSavedBoard,savedAdditions,protectSavedSource} from './savedWorkspace';
 import {useUnsavedChanges} from './WorkspaceControls';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  loadProject,
+  loadProject, getPublication, loadSavedAdditions, saveSavedAdditions,
   saveProject,
   uploadCSV,
   uploadImage,
@@ -53,7 +54,7 @@ export default function Editor({
   user,
   ownerUid = user?.uid,
   sessionId,
-  demo = false,
+  demo = false, personal=false,
   initialBoard,
   notify,
   onExit,
@@ -98,14 +99,14 @@ export default function Editor({
     fileInput = useRef(),
     stageRef = useRef(),
     activeEditor = useRef(null);
-  const allowNavigation=useRef(false);
+  const allowNavigation=useRef(false),savedSource=useRef(null);
   const onEditor = useCallback((editor) => (activeEditor.current = editor), []);
   useUnsavedChanges(()=>!demo&&version.current!==savedVersion.current&&!allowNavigation.current,action=>setModal({type:"leave",action}));
   useEffect(() => {
     if (demo) return;
     let cancelled = false;
     setLoadError("");
-    loadProject(ownerUid, id)
+    (personal?Promise.all([getPublication(id),loadSavedAdditions(id)]).then(([p,overlay])=>{savedSource.current=upgradeBoard(JSON.parse(p.boardJson));return {...p,boardJson:JSON.stringify(combineSavedBoard(savedSource.current,overlay))};}):loadProject(ownerUid, id))
       .then((p) => {
         if (cancelled) return;
         let b = upgradeBoard(JSON.parse(p.boardJson));
@@ -121,7 +122,7 @@ export default function Editor({
     return () => {
       cancelled = true;
     };
-  }, [id, user?.uid, demo, notify, retry]);
+  }, [id, user?.uid, demo, personal, notify, retry]);
   const checkpoint = useCallback((key = true) => {
     const now = Date.now();
     if (
@@ -141,19 +142,21 @@ export default function Editor({
     (fn, key = true) => {
       if (!boardRef.current) return;
       if (key !== false) checkpoint(key);
-      const next = typeof fn === "function" ? fn(boardRef.current) : fn;
+      let next = typeof fn === "function" ? fn(boardRef.current) : fn;
+      if(personal&&savedSource.current)next=protectSavedSource(savedSource.current,next);
       boardRef.current = next;
       version.current++;
       setBoard(next);
       setDirty(true);
       setSaveState("unsaved");
     },
-    [checkpoint],
+    [checkpoint,personal],
   );
   const updateBlock = useCallback(
     (blockId, patch, key = true) => {
       const b = boardRef.current,
         block = b.blocks.find((x) => x.id === blockId);
+      if (personal&&block?.sourceBlock)return;
       if (!block || !canUpdateBlock(b, block, patch, currentView)) return;
       if(patch.table?.audit)patch={...patch,table:withAudit({...block,table:patch.table},user).table};
       change(
@@ -165,9 +168,10 @@ export default function Editor({
             : true,
       );
     },
-    [change, currentView],
+    [change, currentView,personal],
   );
   const updateEdge = (edgeId, patch, key = true) => {
+    if(personal&&savedSource.current?.edges.some(e=>e.id===edgeId))return;
     if (viewIsLocked(boardRef.current, currentView)) return;
     change(
       (b) => ({
@@ -187,7 +191,7 @@ export default function Editor({
     try {
       const task = queue.current
         .catch(() => {})
-        .then(() => saveProject(ownerUid, id, snapshot, sessionId));
+        .then(() => personal?saveSavedAdditions(id,savedAdditions(savedSource.current,snapshot)):saveProject(ownerUid, id, snapshot, sessionId));
       queue.current = task;
       await task;
       savedVersion.current = Math.max(savedVersion.current, revision);
@@ -201,7 +205,7 @@ export default function Editor({
       setSaveError(readableError(e));
       return false;
     }
-  }, [demo, user?.uid, ownerUid, sessionId, id]);
+  }, [demo, personal, user?.uid, ownerUid, sessionId, id]);
   const select = useCallback(
     (blockId, tabId) => {
       setSelected(blockId);
@@ -230,6 +234,7 @@ export default function Editor({
       b = newBlock(type, x, y);
     source.current=null;setTool("select");
     b.viewId = currentView;
+    if(personal&&!tabParentId){b.x=Math.max(0,...boardRef.current.blocks.filter(x=>x.sourceBlock&&!x.parentId&&!x.tabParentId&&x.viewId===currentView).map(x=>x.x+x.w))+50;b.y=50+boardRef.current.blocks.filter(x=>!x.sourceBlock).length*36;}
     if (tabParentId) {
       b.tabParentId = tabParentId;
       b.tabId = tabId;
@@ -293,7 +298,7 @@ export default function Editor({
       ],
     }));
     select(b.id);
-    setTool("select");
+    setTool("select");if(personal)requestAnimationFrame(fit);
   };
   const connect = (id) => {
     if (viewIsLocked(boardRef.current, currentView)) {
@@ -488,14 +493,14 @@ export default function Editor({
         throw Error(
           "This CSV would make the board too large. Use fewer rows or columns.",
         );
-      const csv = await uploadCSV(ownerUid, id, file);
+      const csv = personal?null:await uploadCSV(ownerUid, id, file);
       if (!boardRef.current.blocks.some((b) => b.id === uploadTarget)) {
         await removeCSV(csv);
         return;
       }
       change((b) => ({
         ...b,
-        csvFiles: [...(b.csvFiles || []), csv],
+        csvFiles: csv?[...(b.csvFiles || []), csv]:(b.csvFiles||[]),
         blocks: b.blocks.map((x) =>
           x.id === uploadTarget ? { ...x, table, csv } : x,
         ),
@@ -636,17 +641,17 @@ export default function Editor({
             onChange={(e) =>
               change((b) => ({ ...b, name: e.target.value }), "project-name")
             }
-            disabled={present}
+            disabled={present||personal}
           />
           <span className="editor-badge">
-            {demo ? "Playground" : "Project"}
+            {personal?"My additions":demo ? "Playground" : "Project"}
           </span>
         </div>
         <div className="editor-header-actions">
           <button className="btn" onClick={()=>downloadProject(board)}>Export JSON</button>
-          <button className="btn" onClick={()=>setModal({type:'import'})}>Import JSON</button>
-          {!demo&&ownerUid===user.uid&&<button className="btn" onClick={()=>setModal({type:'sharing'})}>Sharing</button>}
-          {demo ? (
+          {!personal&&<button className="btn" onClick={()=>setModal({type:'import'})}>Import JSON</button>}
+          {!demo&&!personal&&ownerUid===user.uid&&<button className="btn" onClick={()=>setModal({type:'sharing'})}>Sharing</button>}
+          {personal?<><span className="save-status" role="status">{saveState==='saved'?'Saved':saveState==='saving'?'Saving…':'Unsaved changes'}</span><IconButton icon="Eye" title="Published view" onClick={()=>exit(()=>window.open(`${location.origin}${location.pathname}#/view/${id}`,'_blank','noopener,noreferrer'))}/><IconButton icon="Save" title="Save my additions" disabled={!dirty||saveState==='saving'} onClick={persist}/></>:demo ? (
             <>
               <button
                 className="btn"
@@ -765,6 +770,7 @@ export default function Editor({
           onSelect={setActiveViewId}
         />
       )}
+      {personal&&<div className="saved-workspace-notice"><Icon name="Lock" size={14}/> Published blocks are fixed. Add your own blocks alongside them; Save keeps your additions in your account.</div>}
       <div className="editor-body">
         {layers && !present && (
           <Layers
@@ -1025,6 +1031,7 @@ export default function Editor({
           <Properties
             panelWidth={propertyWidth} onPanelResize={width=>{setPropertyWidth(width);localStorage.setItem("maiboard-properties-width",width);}}
             board={board}
+            personal={personal}
             sharing={sharing}
             selected={selected}
             updateBlock={updateBlock}

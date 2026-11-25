@@ -186,3 +186,10 @@ Boolean fields render as checkboxes in Editor, Live and Publish. In Specific ema
 Project type (Public, Specific emails, All MaiBoard users) is immutable after creation, enforced by Firestore. Owners may still manage invited viewer/editor emails. For Specific emails projects, Section properties lists recipient Grants; unchecked recipients do not receive that section, its descendants, connections, or reports/filters that directly reference excluded tables. Nested section grants intersect. Editing access remains available to owners/editors. Publish writes immutable per-recipient generations and enforces entry grants in Firestore. Republish after changing section grants or adding new viewers. Deploy the entries generation + tableId + visibleTo composite index with these rules.
 
 Tabs use a short fade/slide transition with reduced-motion support. No entity Private property is included.
+
+
+### Saved projects and personal additions
+
+Invited viewers and editors appear automatically under Saved; editor invitations also remain in Shared for full editor access. Existing editor invitations resolve their publication ID when the dashboard loads. New viewer/editor invitations carry the publication ID after publication. Unpublished invitations show Awaiting publication. Manually saved public links remain bookmarks.
+
+Saved cards offer two icon actions: Eye opens Published view; Pencil opens Edit my additions. This personal workspace loads only the publication data authorized for that user, freezes all original blocks/connections, and permits adding/editing personal blocks alongside them. Save writes only additions to users/{uid}/saved/{publicationId}/workspace/additions. It never saves the original project or source entities. Personal additions are private to the signed-in user, persist across visits, and are combined with the current publication when reopened. Revoked/unpublished source access prevents reopening the workspace. Connections from personal blocks to original blocks are supported. The entity Private property remains omitted.

@@ -13,3 +13,5 @@
 .entity-field-list{max-height:48vh;overflow:auto;padding-right:6px}.entity-field-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:center;border-bottom:1px solid #e2e8f0;padding:12px 0}.entity-field-row>.field:has(textarea){grid-column:1/-1}.entity-field-row .field{margin:0}.entity-field-row .btn{margin-top:22px}@media(max-width:600px){.entity-field-row{grid-template-columns:1fr}.entity-field-row .btn{margin:0}}
 
 .modal:has(.entity-field-list){width:900px;max-width:calc(100vw - 32px)}.entity-field-list{max-height:32vh;min-height:100px}
+
+.saved-card-actions{display:flex;gap:4px;flex-shrink:0}.saved-workspace-notice{display:flex;align-items:center;gap:8px;background:#eff6ff;border-bottom:1px solid #dbeafe;color:#1e40af;font-size:12px;padding:10px 20px}.project-card-info:has(.saved-card-actions){flex-wrap:wrap}.project-card-info:has(.saved-card-actions)>button:first-child{flex:1 1 100px}

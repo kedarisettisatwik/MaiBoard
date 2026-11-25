@@ -67,7 +67,7 @@ export async function createProject(userId, board, sharing = {}) {
   if (boardBytes(board) > 800000)
     throw Error("This board is larger than 800 KB.");
   const id = uid();
-  await setDoc(projectRef(userId, id), {
+  const batch=writeBatch(db);batch.set(projectRef(userId, id), {
     name: board.name,
     boardJson: JSON.stringify(stripEntityData(board)),
     blockCount: board.blocks.length,
@@ -76,6 +76,7 @@ export async function createProject(userId, board, sharing = {}) {
     publicationId: null,
     sharing: sharingSettings(sharing),
   });
+  const audience=sharingSettings(sharing);for(const email of new Set([...audience.viewerEmails,...audience.editorEmails]))batch.set(doc(db,'projectInvites',`${userId}_${id}_${encodeURIComponent(email)}`),{ownerUid:userId,projectId:id,email,name:board.name,role:audience.editorEmails.includes(email)?'editor':'viewer',publicationId:null});await batch.commit();
   return id;
 }
 export async function loadProject(userId, id) {
@@ -189,12 +190,15 @@ export async function publishProject(userId, projectId, board, existingId) {
     publishedAt: serverTimestamp(),
     sharing, generation, schemaVersion: 2, recipientMode,
   });
+  for(const email of new Set([...sharing.viewerEmails,...sharing.editorEmails]))batch.set(doc(db,'projectInvites',`${userId}_${projectId}_${encodeURIComponent(email)}`),{ownerUid:userId,projectId,email,name:board.name,role:sharing.editorEmails.includes(email)?'editor':'viewer',publicationId:id});
   batch.update(projectRef(userId, projectId), { publicationId: id });
   await batch.commit();
   return id;
 }
 export async function unpublishProject(userId, projectId, id) {
+  const project=await getDoc(projectRef(userId,projectId)),sharing=sharingSettings(project.data().sharing);
   const batch = writeBatch(db);
+  for(const email of new Set([...sharing.viewerEmails,...sharing.editorEmails]))batch.update(doc(db,'projectInvites',`${userId}_${projectId}_${encodeURIComponent(email)}`),{publicationId:null});
   batch.delete(doc(db, "publications", id));
   batch.update(projectRef(userId, projectId), { publicationId: null });
   await batch.commit();
@@ -235,6 +239,7 @@ export async function removeProject(userId, project) {
   const batch = writeBatch(db);
   if (project.publicationId)
     batch.delete(doc(db, "publications", project.publicationId));
+  const sharing=sharingSettings(project.sharing);for(const email of new Set([...sharing.viewerEmails,...sharing.editorEmails]))batch.delete(doc(db,'projectInvites',`${userId}_${project.id}_${encodeURIComponent(email)}`));
   batch.delete(projectRef(userId, project.id));
   await batch.commit();
 }
@@ -251,7 +256,7 @@ export function tablePolicy(block) {
   return {tableId:block.id,booleanColumnIds:table.columns.filter(c=>c.type==='boolean').map(c=>c.id),columns:table.columns,columnIds:table.columns.map(c=>c.id),teamAdd:table.teamAdd===true,teamDeleteOwn:table.teamDeleteOwn===true,personal,audit:table.audit===true,identityIndex:table.columns.findIndex(c=>c.id===personal.columnId),identities:Object.fromEntries((personal.mapping||[]).map(m=>[emailKey(m.email),String(m.value)]))};
 }
 export function watchShared(email,next,error){
-  return onSnapshot(query(collection(db,'projectInvites'),where('email','==',emailKey(email))),s=>next(s.docs.map(d=>({id:d.id,...d.data()}))),error);
+  let active=true,revision=0;const stop=onSnapshot(query(collection(db,'projectInvites'),where('email','==',emailKey(email))),async s=>{const at=++revision;try{const invitations=await Promise.all(s.docs.map(async d=>{const data={id:d.id,...d.data()};if(data.publicationId===undefined&&data.role==='editor'){try{const p=await getDoc(projectRef(data.ownerUid,data.projectId));data.publicationId=p.data()?.publicationId||null;}catch{}}return data;}));if(active&&at===revision)next(invitations);}catch(e){if(active)error?.(e);}},error);return()=>{active=false;stop();};
 }
 export function watchSaved(uid,next,error){return onSnapshot(collection(db,'users',uid,'saved'),s=>next(s.docs.map(d=>({id:d.id,...d.data()}))),error);}
 export async function bookmarkPublication(id,name){
@@ -264,8 +269,8 @@ export async function updateSharing(ownerUid,id,value){
   const old=sharingSettings(snapshot.data().sharing),batch=writeBatch(db);
   if(sharing.audience!==old.audience)throw Error('Project type cannot be changed after creation.');
   const inviteRef=email=>doc(db,'projectInvites',`${ownerUid}_${id}_${encodeURIComponent(email)}`);
-  for(const email of old.editorEmails.filter(e=>!sharing.editorEmails.includes(e)))batch.delete(inviteRef(email));
-  for(const email of sharing.editorEmails)batch.set(inviteRef(email),{ownerUid,projectId:id,email,name:snapshot.data().name,role:'editor'});
+  const recipients=[...new Set([...sharing.viewerEmails,...sharing.editorEmails])];for(const email of new Set([...old.viewerEmails,...old.editorEmails]))if(!recipients.includes(email))batch.delete(inviteRef(email));
+  for(const email of recipients)batch.set(inviteRef(email),{ownerUid,projectId:id,email,name:snapshot.data().name,role:sharing.editorEmails.includes(email)?'editor':'viewer',publicationId:snapshot.data().publicationId||null});
   batch.update(target,{sharing});
   // Audience changes apply to the current link immediately.
   if(snapshot.data().publicationId)batch.update(doc(db,'publications',snapshot.data().publicationId),{sharing});
@@ -314,3 +319,6 @@ export async function saveEntity(key,name,table,editorEmails=[]){const dataJson=
 export async function hydrateEntities(board){const copy=structuredClone(board),keys=[...new Set(copy.blocks.filter(b=>b.table?.entityKey).map(b=>b.table.entityKey))],entities=new Map(await Promise.all(keys.map(async key=>[key,await getEntity(key)])));for(const block of copy.blocks.filter(b=>b.table?.entityKey))block.table=entityTable(block.table,entities.get(block.table.entityKey));return copy;}
 
 export async function toggleTeamBoolean(publicationId,block,index,columnId,checked){const meta=block.table.rowMeta?.[index],column=block.table.columns.find(c=>c.id===columnId);if(!meta?.entry||meta.uid!==auth.currentUser?.uid||column?.type!=='boolean')throw Error('You can toggle checkboxes only on records you added.');const publication=await getDoc(doc(db,'publications',publicationId)),p=publication.data();await runTransaction(db,async tx=>{const target=doc(projectRef(p.ownerUid,p.projectId),'entries',meta.id),snap=await tx.get(target);if(snap.data()?.createdByUid!==auth.currentUser.uid)throw Error('This record belongs to another person.');tx.update(target,{booleanValues:{...snap.data().booleanValues,[columnId]:String(checked)}});});}
+
+export async function loadSavedAdditions(publicationId){const snap=await getDoc(doc(db,'users',auth.currentUser.uid,'saved',publicationId,'workspace','additions'));return snap.exists()?JSON.parse(snap.data().boardJson):{};}
+export async function saveSavedAdditions(publicationId,additions){const boardJson=JSON.stringify(additions);if(new TextEncoder().encode(boardJson).length>800000)throw Error('Your additions exceed 800 KB.');await setDoc(doc(db,'users',auth.currentUser.uid,'saved',publicationId,'workspace','additions'),{boardJson,updatedAt:serverTimestamp()});}

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useId } from "react";
 import {
   X,
+  Pencil,
   Save,
   Loader2,
   LayoutDashboard,
@@ -67,6 +68,7 @@ import {
   Send,
 } from "lucide-react";
 const icons = {
+  Pencil,
   Save,
   X,
   Loader2,
