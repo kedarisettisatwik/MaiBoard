@@ -1,1 +1,37 @@
-{"indexes":[{"collectionGroup":"entries","queryScope":"COLLECTION","fields":[{"fieldPath":"generation","order":"ASCENDING"},{"fieldPath":"visibleTo","order":"ASCENDING"}]}],"fieldOverrides":[]}
+{
+  "indexes": [
+    {
+      "collectionGroup": "entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "generation",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "visibleTo",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "entries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "generation",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tableId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "visibleTo",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

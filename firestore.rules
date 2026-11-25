@@ -28,7 +28,7 @@ service cloud.firestore {
       allow get: if editor(uid,id);
       allow list: if owner(uid);
       allow create: if owner(uid) && validProject(request.resource.data) && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
-      allow update: if validProject(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt && (
+      allow update: if settings(request.resource.data).audience == settings(resource.data).audience && validProject(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt && (
         (owner(uid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sharing','publicationId'])) ||
         (holdsLease(uid,id) && request.resource.data.get('editorSessionId','') == lease(uid,id).sessionId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','boardJson','blockCount','updatedAt','editorSessionId','publicationId']))
       );
@@ -53,12 +53,12 @@ service cloud.firestore {
       match /entries/{entryId} {
         function policy() { return get(/databases/$(database)/documents/users/$(uid)/projects/$(id)/policies/$(request.resource.data.tableId)).data; }
         function pub(data) { return get(/databases/$(database)/documents/publications/$(project(uid,id).publicationId)).data; }
-        function canView(data) { let p=pub(data); return data.generation == p.generation && p.ownerUid == uid && p.projectId == id && audience(uid,p) && audience(uid,project(uid,id)) && (data.visibleTo == '*' || (emailAccount() && data.visibleTo == email())); }
+        function canView(data) { let p=pub(data); return data.generation == p.generation && p.ownerUid == uid && p.projectId == id && audience(uid,p) && audience(uid,project(uid,id)) && (!p.get('recipientMode',false) || get(/databases/$(database)/documents/users/$(uid)/projects/$(id)/policies/$(data.tableId)).data.get('grantEmails','*') == '*' || (emailAccount() && email() in get(/databases/$(database)/documents/users/$(uid)/projects/$(id)/policies/$(data.tableId)).data.grantEmails)) && (data.visibleTo == '*' || (emailAccount() && data.visibleTo == email())); }
         function identity(p,d) { return !p.personal.enabled ? d.visibleTo == '*' : (d.visibleTo == email() && d.values[p.identityIndex] == (p.personal.get('mode','email') == 'mapping' ? p.identities[email()] : request.auth.token.email)); }
         allow read: if editor(uid,id) || canView(resource.data);
         allow create: if emailAccount() && settings(project(uid,id)).audience == 'emails' && audience(uid,project(uid,id)) && policy().teamAdd && request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time && request.resource.data.createdByName is string && request.resource.data.createdByName.size() <= 100 && request.resource.data.values is list && request.resource.data.values.size() == policy().columns.size() && request.resource.data.columnIds == policy().columnIds && identity(policy(),request.resource.data) && canView(request.resource.data)
           && request.resource.data.keys().hasOnly(['tableId','columnIds','values','visibleTo','createdByUid','createdByName','createdOn','createdAt','publicationId','generation']);
-        allow update: if holdsLease(uid,id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['values','columnIds','visibleTo','generation']);
+        allow update: if (holdsLease(uid,id) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['values','columnIds','visibleTo','generation','booleanValues'])) || (emailAccount() && settings(project(uid,id)).audience == 'emails' && resource.data.createdByUid == request.auth.uid && canView(resource.data) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['booleanValues']) && request.resource.data.booleanValues is map && request.resource.data.booleanValues.keys().hasOnly(get(/databases/$(database)/documents/users/$(uid)/projects/$(id)/policies/$(resource.data.tableId)).data.get('booleanColumnIds',[])) && request.resource.data.booleanValues.values().hasOnly(['true','false']));
         allow delete: if holdsLease(uid,id) || (emailAccount() && resource.data.createdByUid == request.auth.uid && canView(resource.data) && get(/databases/$(database)/documents/users/$(uid)/projects/$(id)/policies/$(resource.data.tableId)).data.teamDeleteOwn);
       }
     }
@@ -74,12 +74,26 @@ service cloud.firestore {
       allow create,update: if owner(uid) && request.resource.data.keys().hasOnly(['name','publicationId','savedAt']) && request.resource.data.publicationId == id && request.resource.data.name is string && request.resource.data.name.size() <= 100 && request.resource.data.savedAt == request.time;
     }
     match /publications/{shareId} {
-      function valid(d) { return d.ownerUid is string && d.projectId is string && d.name is string && d.name.size() <= 100 && d.boardJson is string && d.boardJson.size() <= 800000 && sharingValid(d.sharing) && d.schemaVersion == 2 && d.generation is string && d.publishedAt == request.time && d.keys().hasOnly(['ownerUid','projectId','name','boardJson','publishedAt','sharing','generation','schemaVersion']); }
+      function valid(d) { return d.ownerUid is string && d.projectId is string && d.name is string && d.name.size() <= 100 && d.boardJson is string && d.boardJson.size() <= 800000 && sharingValid(d.sharing) && d.schemaVersion == 2 && d.generation is string && d.publishedAt == request.time && d.keys().hasOnly(['ownerUid','projectId','name','boardJson','publishedAt','sharing','generation','schemaVersion','recipientMode']); }
       allow get: if audience(resource.data.ownerUid,resource.data) && audience(resource.data.ownerUid,project(resource.data.ownerUid,resource.data.projectId));
       allow list: if false;
       allow create: if editor(request.resource.data.ownerUid,request.resource.data.projectId) && valid(request.resource.data);
       allow update: if request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.projectId == resource.data.projectId && ((owner(resource.data.ownerUid) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sharing'])) || (holdsLease(resource.data.ownerUid,resource.data.projectId) && valid(request.resource.data)));
       allow delete: if owner(resource.data.ownerUid);
+    }
+    match /tableEntities/{key} {
+      function canEdit() { return owner(resource.data.ownerUid) || (emailAccount() && email() in resource.data.editorEmails); }
+      function validEntity(d) { return d.keys().hasOnly(['name','ownerUid','editorEmails','dataJson','revision','createdAt','updatedAt']) && d.name is string && d.name.size() <= 100 && d.ownerUid is string && d.editorEmails is list && d.editorEmails.size() <= 80 && d.dataJson is string && d.dataJson.size() <= 750000 && d.revision is int && d.createdAt is timestamp && d.updatedAt == request.time; }
+      allow read: if canEdit();
+      allow create: if owner(request.resource.data.ownerUid) && validEntity(request.resource.data) && request.resource.data.revision == 1 && request.resource.data.createdAt == request.time;
+      allow update: if canEdit() && validEntity(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.revision == resource.data.revision + 1 && (owner(resource.data.ownerUid) || request.resource.data.editorEmails == resource.data.editorEmails);
+      allow delete: if false;
+    }
+    match /publications/{publicationId}/generations/{generation}/recipients/{recipient} {
+      function p() { return get(/databases/$(database)/documents/publications/$(publicationId)).data; }
+      allow get: if emailAccount() && resource.data.email == email() && resource.data.ownerUid == p().ownerUid && resource.data.projectId == p().projectId && generation == p().generation && resource.data.generation == generation && audience(p().ownerUid,p()) && audience(p().ownerUid,project(p().ownerUid,p().projectId));
+      allow list: if false;
+      allow create,update: if request.resource.data.generation == generation && (!exists(/databases/$(database)/documents/publications/$(publicationId)) || (p().ownerUid == request.resource.data.ownerUid && p().projectId == request.resource.data.projectId)) && holdsLease(request.resource.data.ownerUid,request.resource.data.projectId) && request.resource.data.keys().hasOnly(['ownerUid','projectId','email','generation','boardJson']) && request.resource.data.email is string && request.resource.data.generation is string && request.resource.data.boardJson is string && request.resource.data.boardJson.size() <= 800000;
     }
     match /publications/{publicationId}/generations/{generation}/rows/{rowId} {
       function p() { return get(/databases/$(database)/documents/publications/$(publicationId)).data; }

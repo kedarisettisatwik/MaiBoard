@@ -175,3 +175,14 @@ Drag the Layers/Properties outer border to resize a panel; these personal UI wid
 Owners and invited editors can modify/delete anyone's table records in either Editor or Live mode, while original Created by metadata is retained. Live mode keeps board layout and column schema read-only and uses the same exclusive editor lease. Published viewers retain the configured own-row submission/deletion limits.
 
 Email verification is no longer required anywhere, per the project owner's request. Access checks use the signed-in account's email and UID. All registered accounts can open All MaiBoard users shares. Email-based audience/editor/personal-row checks use the claimed account email without proof of mailbox ownership.
+
+
+### Table entities and section grants
+
+The home Tables tab defines reusable schemas only: field names, Text, Date, Number, Picklist (with options), and Boolean. It does not show or add records. Each entity has a generated unique key. Paste the key under a project table's Table entity properties to load its fields and records. Add/edit records in Editor or Live and click Save to write them to the entity; other projects load the latest records when opened or refreshed. Explicit entity editor emails control source-table access. Project owners who own the entity also grant their project editors source access when saving. Concurrent entity revisions are checked during an atomic project/entity save, preventing silent overwrites. Team submissions join the source entity when an editor saves the project. Published links remain snapshots and require republishing to refresh layout/base records.
+
+Boolean fields render as checkboxes in Editor, Live and Publish. In Specific emails publications, team members may toggle Boolean fields on records they submitted; database rules preserve other fields and reject changes to other people's rows. Owners/editors can manage all records in Editor/Live. Project tables offer compact download-icon CSV controls and Clear data with confirmation; clear is staged until Save and is absent for published viewers.
+
+Project type (Public, Specific emails, All MaiBoard users) is immutable after creation, enforced by Firestore. Owners may still manage invited viewer/editor emails. For Specific emails projects, Section properties lists recipient Grants; unchecked recipients do not receive that section, its descendants, connections, or reports/filters that directly reference excluded tables. Nested section grants intersect. Editing access remains available to owners/editors. Publish writes immutable per-recipient generations and enforces entry grants in Firestore. Republish after changing section grants or adding new viewers. Deploy the entries generation + tableId + visibleTo composite index with these rules.
+
+Tabs use a short fade/slide transition with reduced-motion support. No entity Private property is included.

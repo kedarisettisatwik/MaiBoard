@@ -1,3 +1,4 @@
+import EntityTables from './EntityTables';
 import React, { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import {
   onAuthStateChanged,
@@ -342,7 +343,7 @@ function Dashboard({ user, notify, onLogout }) {
         </section>
         <div className="dashboard-filter">
           <div className="project-filter">
-            {[['all','All projects',projects.length],['shared','Shared',shared.length],['saved','Saved',saved.length]].map(([value,label,count])=><button key={value} className={`btn ${tab===value?'primary':'subtle'}`} onClick={()=>setTab(value)}>{label} <span>{count}</span></button>)}
+            {[['all','All projects',projects.length],['shared','Shared',shared.length],['tables','Tables',''],['saved','Saved',saved.length]].map(([value,label,count])=><button key={value} className={`btn ${tab===value?'primary':'subtle'}`} onClick={()=>setTab(value)}>{label} <span>{count}</span></button>)}
           </div>
           <label className="search-field">
             <Icon name="Search" size={17} />
@@ -360,7 +361,7 @@ function Dashboard({ user, notify, onLogout }) {
             <Icon name="RefreshCw" size={16} /> Retry connection
           </button>
         )}
-        {loading ? (
+        {tab==='tables'?<EntityTables user={user} notify={notify} search={search}/>:loading ? (
           <Spinner text="Gathering your projects…" />
         ) : (
           <div className="project-grid">
@@ -409,7 +410,7 @@ function Dashboard({ user, notify, onLogout }) {
 
           </div>
         )}
-        {!loading && search && !filtered.length && (
+        {tab!=='tables' && !loading && search && !filtered.length && (
           <p className="empty-search">No projects match “{search}”.</p>
         )}
         <div className="workspace-note">

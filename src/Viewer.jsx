@@ -2,7 +2,7 @@ import {useUnsavedChanges} from './WorkspaceControls';
 import {updateLiveTable} from './liveData';
 import {appendLiveRow} from './model';
 import React, { useEffect, useRef, useState } from "react";
-import { getPublication, loadProject, saveProject, bookmarkPublication, addTeamRow, deleteTeamRow } from "./firebase";
+import { toggleTeamBoolean, getPublication, loadProject, saveProject, bookmarkPublication, addTeamRow, deleteTeamRow } from "./firebase";
 import { readableError, viewBlocks, projectViews, startingView, upgradeBoard } from "./model";
 import { Logo, Icon, IconButton, Spinner, ErrorMessage, Modal, Field } from "./ui";
 import {CellInput} from "./TableControls";
@@ -127,6 +127,8 @@ export default function Viewer({ id, live=false, user, onSignIn, ownerUid=user?.
           onAddLiveRow={live?openRow:publication?.sharing?.audience==='emails'&&user?.email?openRow:undefined}
           canAddRow={block=>live||block.table.teamAdd===true}
           canDeleteRow={(block,index)=>!live&&block.table.teamDeleteOwn===true&&block.table.rowMeta?.[index]?.entry&&block.table.rowMeta[index].uid===user?.uid}
+          canToggleBoolean={(block,index)=>!live&&!!user&&publication?.sharing?.audience==='emails'&&block.table.rowMeta?.[index]?.entry===true&&block.table.rowMeta[index].uid===user.uid}
+          onToggleBoolean={async(block,index,columnId,checked)=>{try{await toggleTeamBoolean(id,block,index,columnId,checked);setRetry(x=>x+1);}catch(e){setRowError(readableError(e));}}}
           onDeleteLiveRow={async(block,index)=>{try{await deleteTeamRow(id,block.table.rowMeta[index].id);setRetry(x=>x+1);}catch(e){setRowError(e.message);}}}
           stageRef={stageRef}
         >

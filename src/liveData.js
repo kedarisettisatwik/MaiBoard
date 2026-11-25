@@ -18,5 +18,5 @@ export function updateLiveTable(board,id,table,user){
     });
   });
   const next=withAudit({...block,table:{...block.table,rows,rowMeta:rows.map((_,i)=>table.rowMeta?.[i]||null)}},user);
-  return {...board,blocks:board.blocks.map(b=>b.id===id?next:b)};
+  return {...board,blocks:board.blocks.map(b=>b.id===id?next:next.table.entityKey&&b.table?.entityKey===next.table.entityKey?{...b,table:{...b.table,rows:next.table.rows,rowMeta:next.table.rowMeta,columns:next.table.columns}}:b)};
 }

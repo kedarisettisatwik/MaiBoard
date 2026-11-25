@@ -1,3 +1,4 @@
+import {validateEntity,entityTable,stripEntityData,recipientBoard,sectionEmails} from './entities';
 import { initializeApp } from "firebase/app";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 import {
@@ -68,7 +69,7 @@ export async function createProject(userId, board, sharing = {}) {
   const id = uid();
   await setDoc(projectRef(userId, id), {
     name: board.name,
-    boardJson: JSON.stringify(board),
+    boardJson: JSON.stringify(stripEntityData(board)),
     blockCount: board.blocks.length,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -83,7 +84,9 @@ export async function loadProject(userId, id) {
     throw Error("This project does not exist or has been deleted.");
   const entries = await getDocs(collection(projectRef(userId,id),'entries'));
   loadedEntries.set(`${userId}/${id}`,new Set(entries.docs.map(d=>d.id)));
-  return { id: snap.id, ...snap.data(), boardJson: JSON.stringify(mergeEntries(JSON.parse(snap.data().boardJson), entries.docs.map(d=>({id:d.id,...d.data()})))) };
+  const hydrated=await hydrateEntities(JSON.parse(snap.data().boardJson));
+  const entryIds=new Set(entries.docs.map(d=>d.id));for(const b of hydrated.blocks.filter(b=>b.table?.entityKey)){const keep=b.table.rows.map((_,i)=>!b.table.rowMeta?.[i]?.entry||b.table.rowMeta[i].tableId!==b.id||entryIds.has(b.table.rowMeta[i].id));b.table.rows=b.table.rows.filter((_,i)=>keep[i]);b.table.rowMeta=(b.table.rowMeta||[]).filter((_,i)=>keep[i]);}
+  return { id: snap.id, ...snap.data(), boardJson: JSON.stringify(mergeEntries(hydrated, entries.docs.map(d=>({id:d.id,...d.data()})))) };
 }
 export async function addLiveTableRow(userId,id,blockId,values,columnIds) {
   if(auth.currentUser?.uid!==userId)throw Error('Sign in as the project owner to add rows.');
@@ -103,11 +106,18 @@ export async function saveProject(userId, id, board, sessionId) {
     throw Error(
       "This board is larger than 800 KB. Split large tables into another project before saving.",
     );
-  const batch=writeBatch(db), clean=baseBoard(board);
+  const clean=stripEntityData(baseBoard(board));
   const existing=await getDocs(collection(projectRef(userId,id),'entries'));
   const existingById=new Map(existing.docs.map(d=>[d.id,d.data()]));
+  const changedEntities=new Map();
+  await runTransaction(db,async batch=>{
+    const projectSnapshot=await batch.get(projectRef(userId,id));
+    const sharing=sharingSettings(projectSnapshot.data().sharing);
+    const linked=new Map();for(const b of board.blocks.filter(b=>b.table?.entityKey)){const data=validateEntity(b.table),key=b.table.entityKey;if(linked.has(key)&&JSON.stringify(linked.get(key).data)!==JSON.stringify(data))throw Error('Linked copies of an entity disagree. Reload and retry.');linked.set(key,{data,table:b.table});}
+    const entitySnapshots=[];for(const [key,value] of linked)entitySnapshots.push([key,value,await batch.get(entityRef(key))]);
+    for(const [key,value,snap] of entitySnapshots){if(!snap.exists())throw Error('The linked entity no longer exists.');const data=snap.data(),json=JSON.stringify(value.data),expected=entityVersions.get(key)??value.table.entityRevision;if(data.revision!==expected)throw Error('This entity changed in another tab or project. Reload before saving.');const patch={dataJson:json,revision:data.revision+1,updatedAt:serverTimestamp()};if(data.ownerUid===auth.currentUser.uid)patch.editorEmails=[...new Set([...data.editorEmails,...sharing.editorEmails])];batch.update(entityRef(key),patch);changedEntities.set(key,patch.revision);}
   for(const b of board.blocks.filter(b=>b.type==='table')) {
-    b.table.rowMeta?.forEach((meta,i)=>{const old=existingById.get(meta?.id);if(meta?.entry&&meta.tableId===b.id&&old&&(JSON.stringify(old.values)!==JSON.stringify(b.table.rows[i])||JSON.stringify(old.columnIds)!==JSON.stringify(b.table.columns.map(c=>c.id)))) batch.update(doc(projectRef(userId,id),'entries',meta.id),{values:b.table.rows[i],columnIds:b.table.columns.map(c=>c.id)});});
+    b.table.rowMeta?.forEach((meta,i)=>{const old=existingById.get(meta?.id);if(meta?.entry&&meta.tableId===b.id&&old&&(JSON.stringify(old.values)!==JSON.stringify(b.table.rows[i])||JSON.stringify(old.columnIds)!==JSON.stringify(b.table.columns.map(c=>c.id)))) batch.update(doc(projectRef(userId,id),'entries',meta.id),{values:b.table.rows[i],columnIds:b.table.columns.map(c=>c.id),booleanValues:{}});});
   }
   const retained=new Set(board.blocks.filter(b=>b.type==='table').flatMap(b=>(b.table.rowMeta||[]).filter(m=>m?.entry&&m.tableId===b.id).map(m=>m.id)));
   // Only delete submissions present in this editor's loaded snapshot. Newly arriving
@@ -121,7 +131,8 @@ export async function saveProject(userId, id, board, sessionId) {
       updatedAt: serverTimestamp(),
       editorSessionId: sessionId || '',
     },{merge:true});
-  await batch.commit();
+  });
+  for(const [key,revision] of changedEntities)entityVersions.set(key,revision);
 }
 export async function uploadCSV(userId, projectId, file) {
   const id = uid(),
@@ -145,20 +156,22 @@ export async function publishProject(userId, projectId, board, existingId) {
   const currentEntries=await getDocs(collection(projectRef(userId,projectId),'entries'));
   board=mergeEntries(baseBoard(board),currentEntries.docs.map(d=>({id:d.id,...d.data()})));
   board.blocks=board.blocks.map(b=>b.type==='table'?withAudit(b,auth.currentUser):b);
-  const id = existingId || uid(),
-    snapshot = publishSnapshot(board);
+  const id = existingId || uid();
+  let snapshot = publishSnapshot(board);
   if (boardBytes(snapshot) > 800000)
     throw Error("This board is too large to publish. Reduce its table data.");
   const project=await getDoc(projectRef(userId,projectId)), sharing=sharingSettings(project.data().sharing);
-  if(snapshot.blocks.some(b=>b.type==='table'&&b.table.personal?.enabled)&&sharing.audience==='public')throw Error('Personal dashboards require “Specific emails” or “All MaiBoard users”. Change the audience in Sharing.');
-  const generation=uid(), rows=[], identities=[];
+  if(snapshot.blocks.some(b=>b.type==='table'&&b.table.personal?.enabled)&&sharing.audience==='public')throw Error('Personal dashboards require “Specific emails” or “All MaiBoard users”. Create a project with a signed-in audience.');
+  const generation=uid(), rows=[], identities=[],fullSnapshot=structuredClone(snapshot),recipientMode=sharing.audience==='emails';
+  if(recipientMode)snapshot=recipientBoard(snapshot,'',sharing);
   for(const block of snapshot.blocks.filter(b=>b.type==='table')) {
     const audited=withAudit(block,auth.currentUser);block.table=audited.table;
-    block.table.rows.forEach((values,index)=>{if(!block.table.rowMeta?.[index]?.entry)rows.push({tableId:block.id,values,order:index,visibleTo:rowAudience(block.table,values)});});
+    block.table.rows.forEach((values,index)=>{if(!recipientMode&&!block.table.rowMeta?.[index]?.entry)rows.push({tableId:block.id,values,order:index,visibleTo:rowAudience(block.table,values)});});
     for(const m of block.table.personal?.mapping||[])identities.push({tableId:block.id,email:emailKey(m.email),value:String(m.value)});
     block.table.rows=[]; delete block.table.rowMeta;
     if(block.table.personal)delete block.table.personal.mapping;
   }
+  if(recipientMode){const emails=[...new Set([...sharing.viewerEmails,...sharing.editorEmails,emailKey(auth.currentUser.email)])];for(const email of emails){const variant=email===emailKey(auth.currentUser.email)&&auth.currentUser.uid===userId?structuredClone(fullSnapshot):recipientBoard(fullSnapshot,email,sharing);for(const b of variant.blocks.filter(b=>b.type==='table')){const keep=b.table.rows.map((r,i)=>!b.table.rowMeta?.[i]?.entry&&(!b.table.personal?.enabled||rowAudience(b.table,r)===email));b.table.rows=b.table.rows.filter((_,i)=>keep[i]);delete b.table.rowMeta;if(b.table.personal)delete b.table.personal.mapping;}const boardJson=JSON.stringify(variant);if(new TextEncoder().encode(boardJson).length>800000)throw Error('A recipient view exceeds 800 KB.');await setDoc(doc(db,'publications',id,'generations',generation,'recipients',encodeURIComponent(email)),{ownerUid:userId,projectId,email,generation,boardJson});}}
   // Write a new immutable generation first, then atomically switch its pointer.
   // A failed upload leaves the old published generation intact.
   for(let offset=0;offset<rows.length;offset+=400){const chunk=writeBatch(db);for(const row of rows.slice(offset,offset+400))chunk.set(doc(db,'publications',id,'generations',generation,'rows',uid()),{...row,publicationId:id,generation,ownerUid:userId,projectId});await chunk.commit();}
@@ -167,14 +180,14 @@ export async function publishProject(userId, projectId, board, existingId) {
   for(const block of board.blocks.filter(b=>b.type==='table'))block.table.rowMeta?.forEach((meta,index)=>{if(meta?.entry&&meta.tableId===block.id)entryUpdates.push({id:meta.id,visibleTo:rowAudience(block.table,block.table.rows[index])});});
   for(let offset=0;offset<entryUpdates.length;offset+=400){const chunk=writeBatch(db);for(const entry of entryUpdates.slice(offset,offset+400))chunk.update(doc(projectRef(userId,projectId),'entries',entry.id),{generation,visibleTo:entry.visibleTo});await chunk.commit();}
   const batch = writeBatch(db);
-  for(const block of board.blocks.filter(b=>b.type==='table'))batch.set(doc(projectRef(userId,projectId),'policies',block.id),tablePolicy(block));
+  for(const block of board.blocks.filter(b=>b.type==='table'))batch.set(doc(projectRef(userId,projectId),'policies',block.id),{...tablePolicy(block),grantEmails:sectionEmails(board,block,sharing)||'*'});
   batch.set(doc(db, "publications", id), {
     ownerUid: userId,
     projectId,
     name: board.name,
     boardJson: JSON.stringify(snapshot),
     publishedAt: serverTimestamp(),
-    sharing, generation, schemaVersion: 2,
+    sharing, generation, schemaVersion: 2, recipientMode,
   });
   batch.update(projectRef(userId, projectId), { publicationId: id });
   await batch.commit();
@@ -194,11 +207,15 @@ export async function getPublication(id) {
     );
   const data=s.data();
   if(data.schemaVersion!==2)return data;
-  const rows=await getDocs(query(collection(db,'publications',id,'generations',data.generation,'rows'),where('visibleTo','in',auth.currentUser?.email?['*',emailKey(auth.currentUser.email)]:['*'])));
-  const board=JSON.parse(data.boardJson);
-  for(const b of board.blocks.filter(b=>b.type==='table'))b.table.rows=rows.docs.map(d=>d.data()).filter(r=>r.tableId===b.id).sort((a,b)=>a.order-b.order).map(r=>r.values);
-  const entries=await getDocs(query(collection(projectRef(data.ownerUid,data.projectId),'entries'),where('generation','==',data.generation),where('visibleTo','in',auth.currentUser?.email?['*',emailKey(auth.currentUser.email)]:['*'])));
-  data.boardJson=JSON.stringify(mergeEntries(board,entries.docs.map(d=>({id:d.id,...d.data()}))));
+  let board;
+  if(data.recipientMode){const email=emailKey(auth.currentUser?.email);if(!email)throw Error('Sign in to open this project.');const variant=await getDoc(doc(db,'publications',id,'generations',data.generation,'recipients',encodeURIComponent(email)));if(!variant.exists()||variant.data().generation!==data.generation)throw Error('Ask the owner to republish this project to prepare your view.');board=JSON.parse(variant.data().boardJson);}else{
+    const rows=await getDocs(query(collection(db,'publications',id,'generations',data.generation,'rows'),where('visibleTo','in',auth.currentUser?.email?['*',emailKey(auth.currentUser.email)]:['*'])));
+    board=JSON.parse(data.boardJson);
+    for(const b of board.blocks.filter(b=>b.type==='table'))b.table.rows=rows.docs.map(d=>d.data()).filter(r=>r.tableId===b.id).sort((a,b)=>a.order-b.order).map(r=>r.values);
+  }
+  const entryQueries=data.recipientMode?board.blocks.filter(b=>b.type==='table').map(b=>query(collection(projectRef(data.ownerUid,data.projectId),'entries'),where('generation','==',data.generation),where('tableId','==',b.id),where('visibleTo','in',auth.currentUser?.email?['*',emailKey(auth.currentUser.email)]:['*']))):[query(collection(projectRef(data.ownerUid,data.projectId),'entries'),where('generation','==',data.generation),where('visibleTo','in',auth.currentUser?.email?['*',emailKey(auth.currentUser.email)]:['*']))];
+  const entries=(await Promise.all(entryQueries.map(q=>getDocs(q)))).flatMap(s=>s.docs.map(d=>({id:d.id,...d.data()})));
+  data.boardJson=JSON.stringify(mergeEntries(board,entries));
   return data;
 }
 export async function removeProject(userId, project) {
@@ -231,7 +248,7 @@ export async function uploadImage(userId, projectId, file) {
 export function tablePolicy(block) {
   const table=block.table;
   const personal=table.personal||{enabled:false};
-  return {tableId:block.id,columns:table.columns,columnIds:table.columns.map(c=>c.id),teamAdd:table.teamAdd===true,teamDeleteOwn:table.teamDeleteOwn===true,personal,audit:table.audit===true,identityIndex:table.columns.findIndex(c=>c.id===personal.columnId),identities:Object.fromEntries((personal.mapping||[]).map(m=>[emailKey(m.email),String(m.value)]))};
+  return {tableId:block.id,booleanColumnIds:table.columns.filter(c=>c.type==='boolean').map(c=>c.id),columns:table.columns,columnIds:table.columns.map(c=>c.id),teamAdd:table.teamAdd===true,teamDeleteOwn:table.teamDeleteOwn===true,personal,audit:table.audit===true,identityIndex:table.columns.findIndex(c=>c.id===personal.columnId),identities:Object.fromEntries((personal.mapping||[]).map(m=>[emailKey(m.email),String(m.value)]))};
 }
 export function watchShared(email,next,error){
   return onSnapshot(query(collection(db,'projectInvites'),where('email','==',emailKey(email))),s=>next(s.docs.map(d=>({id:d.id,...d.data()}))),error);
@@ -245,6 +262,7 @@ export async function removeBookmark(id){await deleteDoc(doc(db,'users',auth.cur
 export async function updateSharing(ownerUid,id,value){
   const sharing=sharingSettings(value),target=projectRef(ownerUid,id),snapshot=await getDoc(target);
   const old=sharingSettings(snapshot.data().sharing),batch=writeBatch(db);
+  if(sharing.audience!==old.audience)throw Error('Project type cannot be changed after creation.');
   const inviteRef=email=>doc(db,'projectInvites',`${ownerUid}_${id}_${encodeURIComponent(email)}`);
   for(const email of old.editorEmails.filter(e=>!sharing.editorEmails.includes(e)))batch.delete(inviteRef(email));
   for(const email of sharing.editorEmails)batch.set(inviteRef(email),{ownerUid,projectId:id,email,name:snapshot.data().name,role:'editor'});
@@ -287,3 +305,12 @@ export async function deleteTeamRow(publicationId,entryId){
 }
 
 export async function getProjectSharing(owner,id){const snap=await getDoc(projectRef(owner,id));return sharingSettings(snap.data()?.sharing);}
+
+const entityVersions=new Map();
+const entityRef=key=>doc(db,'tableEntities',key);
+export function watchEntities(user,next,error){const owned=new Map(),shared=new Map(),emit=()=>next([...new Map([...owned,...shared]).values()].sort((a,b)=>a.name.localeCompare(b.name)));const accept=(target,s)=>{target.clear();for(const d of s.docs)target.set(d.id,{id:d.id,...d.data()});emit();};const stops=[onSnapshot(query(collection(db,'tableEntities'),where('ownerUid','==',user.uid)),s=>accept(owned,s),error)];if(user.email)stops.push(onSnapshot(query(collection(db,'tableEntities'),where('editorEmails','array-contains',emailKey(user.email))),s=>accept(shared,s),error));return()=>stops.forEach(stop=>stop());}
+export async function getEntity(key){if(!/^[a-zA-Z0-9_-]{8,100}$/.test(key))throw Error('Enter a valid entity key.');const snap=await getDoc(entityRef(key));if(!snap.exists())throw Error('No table entity exists with this key.');entityVersions.set(key,snap.data().revision);return {id:snap.id,...snap.data()};}
+export async function saveEntity(key,name,table,editorEmails=[]){const dataJson=JSON.stringify(validateEntity(table));if(new TextEncoder().encode(dataJson).length>750000)throw Error('This entity is too large (750 KB limit).');const clean=sharingSettings({editorEmails}).editorEmails;if(!key){key=uid();await setDoc(entityRef(key),{name:name.trim().slice(0,100)||'Untitled table',ownerUid:auth.currentUser.uid,editorEmails:clean,dataJson,revision:1,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});entityVersions.set(key,1);}else{await runTransaction(db,async tx=>{const snap=await tx.get(entityRef(key));if(snap.data().revision!==entityVersions.get(key))throw Error('This entity changed elsewhere. Reopen it before saving.');const revision=snap.data().revision+1,patch={name:name.trim().slice(0,100)||'Untitled table',dataJson,revision,updatedAt:serverTimestamp()};if(snap.data().ownerUid===auth.currentUser.uid)patch.editorEmails=clean;tx.update(entityRef(key),patch);});entityVersions.set(key,entityVersions.get(key)+1);}return key;}
+export async function hydrateEntities(board){const copy=structuredClone(board),keys=[...new Set(copy.blocks.filter(b=>b.table?.entityKey).map(b=>b.table.entityKey))],entities=new Map(await Promise.all(keys.map(async key=>[key,await getEntity(key)])));for(const block of copy.blocks.filter(b=>b.table?.entityKey))block.table=entityTable(block.table,entities.get(block.table.entityKey));return copy;}
+
+export async function toggleTeamBoolean(publicationId,block,index,columnId,checked){const meta=block.table.rowMeta?.[index],column=block.table.columns.find(c=>c.id===columnId);if(!meta?.entry||meta.uid!==auth.currentUser?.uid||column?.type!=='boolean')throw Error('You can toggle checkboxes only on records you added.');const publication=await getDoc(doc(db,'publications',publicationId)),p=publication.data();await runTransaction(db,async tx=>{const target=doc(projectRef(p.ownerUid,p.projectId),'entries',meta.id),snap=await tx.get(target);if(snap.data()?.createdByUid!==auth.currentUser.uid)throw Error('This record belongs to another person.');tx.update(target,{booleanValues:{...snap.data().booleanValues,[columnId]:String(checked)}});});}

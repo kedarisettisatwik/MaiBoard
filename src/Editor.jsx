@@ -63,6 +63,7 @@ export default function Editor({
   const [board, setBoard] = useState(
       demo ? (initialBoard || sampleBoard("A little room to explore")) : null,
     ),
+    [sharing,setSharing]=useState(null),
     [loadError, setLoadError] = useState(""),
     [retry, setRetry] = useState(0),
     [selected, setSelected] = useState(null),
@@ -112,7 +113,7 @@ export default function Editor({
         b.csvFiles ||= [];
         boardRef.current = b;
         setBoard(b);
-        setPublicationId(p.publicationId || null);
+        setPublicationId(p.publicationId || null);setSharing(p.sharing);
       })
       .catch((e) => {
         if (!cancelled) setLoadError(readableError(e));
@@ -156,7 +157,7 @@ export default function Editor({
       if (!block || !canUpdateBlock(b, block, patch, currentView)) return;
       if(patch.table?.audit)patch={...patch,table:withAudit({...block,table:patch.table},user).table};
       change(
-        (p) => updateBoardBlock(p, blockId, patch),
+        (p) => {const next=updateBoardBlock(p, blockId, patch);if(patch.table?.entityKey)next.blocks=next.blocks.map(x=>x.id!==blockId&&x.table?.entityKey===patch.table.entityKey?{...x,table:{...x.table,columns:patch.table.columns,rows:patch.table.rows,rowMeta:patch.table.rowMeta}}:x);return next;},
         key === false
           ? false
           : typeof key === "string"
@@ -615,7 +616,7 @@ export default function Editor({
     name = user?.displayName || user?.email?.split("@")[0] || "Explorer";
   return (
     <div className={`editor-app ${present ? "presentation-mode" : ""}`}>
-      {modal?.type==='sharing'&&<SharingModal ownerUid={ownerUid} id={id} onClose={()=>setModal(null)} onSaved={()=>notify('Sharing updated.')}/>}
+      {modal?.type==='sharing'&&<SharingModal ownerUid={ownerUid} id={id} onClose={()=>setModal(null)} onSaved={value=>{setSharing(value);notify('Sharing updated.');}}/>}
       {modal?.type==='create'&&<NewProjectModal board={board} onClose={()=>setModal(null)} onCreate={async(b,sharing)=>{const projectId=await createProject(user.uid,b,sharing);location.hash=`/project/${projectId}`;}}/>}
       {modal?.type==='import'&&<Modal title="Import project JSON" onClose={()=>setModal(null)}><p>This replaces this canvas with all views and blocks from the file. You can undo the import. Export this project first if you want a backup.</p><input type="file" accept=".json,application/json" onChange={async e=>{try{if(!e.target.files[0])return;const imported=upgradeBoard(projectImport(await e.target.files[0].text()));change(imported);setSelected(null);setActiveViewId(startingView(imported));setModal(null);notify('Imported all views and blocks.');}catch(error){notify(error.message);}}}/></Modal>}
       <header className="editor-header">
@@ -1024,6 +1025,7 @@ export default function Editor({
           <Properties
             panelWidth={propertyWidth} onPanelResize={width=>{setPropertyWidth(width);localStorage.setItem("maiboard-properties-width",width);}}
             board={board}
+            sharing={sharing}
             selected={selected}
             updateBlock={updateBlock}
             updateEdge={updateEdge}

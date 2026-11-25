@@ -1,3 +1,4 @@
+import {EntityLink} from './EntityTables';
 import {TeamTableProperties} from './Sharing';
 import {ResizeGrip} from './WorkspaceControls';
 import { ExtraProperties } from "./ExtendedBlocks";
@@ -42,7 +43,7 @@ export default function Properties({
   onArrange,
   currentView,
   onUnlock,
-  panelWidth,onPanelResize,
+  panelWidth,onPanelResize,sharing,
 }) {
   const block = board.blocks.find((b) => b.id === selected),
     edge = board.edges.find((e) => e.id === selected),
@@ -189,7 +190,8 @@ export default function Properties({
             </section>
             <div inert={locked ? true : undefined}>
               <ExtraProperties board={board} block={block} update={update} />
-              {block.type==='table'&&<TeamTableProperties block={block} update={update}/>}
+              {block.type==='table'&&<><EntityLink block={block} update={update}/><TeamTableProperties block={block} update={update}/></>}
+              {block.type==='section'&&sharing?.audience==='emails'&&<section className="property-section"><h3>Grants</h3><p className="property-hint">Only checked recipients can view this section and its nested blocks. Owners and editors retain editing access.</p>{[...new Set([...sharing.viewerEmails,...sharing.editorEmails])].map(email=><label key={email}><input type="checkbox" checked={!Array.isArray(block.grantEmails)||block.grantEmails.includes(email)} onChange={e=>{const current=block.grantEmails||[...new Set([...sharing.viewerEmails,...sharing.editorEmails])];update({grantEmails:e.target.checked?[...current,email]:current.filter(x=>x!==email)},'section-grants');}}/>{email}</label>)}{!sharing.viewerEmails.length&&!sharing.editorEmails.length&&<p>Add recipient emails in Sharing first.</p>}</section>}
             </div>
             <section
               className="property-section"

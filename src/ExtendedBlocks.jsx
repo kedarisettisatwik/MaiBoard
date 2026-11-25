@@ -78,7 +78,7 @@ export function TabsBlock({
                 />
               </button>
               {open[t.id] && (
-                <div className="block-content" style={{ padding }}>
+                <div className="block-content tab-panel-enter" style={{ padding }}>
                   {content(t)}
                 </div>
               )}
@@ -109,7 +109,7 @@ export function TabsBlock({
             ))}
           </div>
           {layout==='vertical'&&!readOnly&&<ResizeGrip inline scaled label="Resize vertical tab navigation" min={80} max={Math.min(600,block.w*0.6)} value={verticalTabWidth(block)} onChange={width=>update({tabNavWidth:width},'tab-navigation-width')}/>}
-          <div className="block-content" role="tabpanel" style={{ padding }}>
+          <div key={selected} className="block-content tab-panel-enter" role="tabpanel" style={{ padding }}>
             {content(
               block.tabs.find((t) => t.id === selected) || block.tabs[0],
             )}

@@ -51,7 +51,9 @@ export function mergeEntries(board, entries) {
     const table = b.table;
     table.rowMeta = table.rows.map((_,i)=>table.rowMeta?.[i]||null);
     for (const entry of entries.filter(e => e.tableId === b.id)) {
-      const row = table.columns.map(c => c.id === AUDIT_BY ? entry.createdByName : c.id === AUDIT_ON ? String(entry.createdAt?.toDate?.().toISOString() || entry.createdOn || '').slice(0,10) : entry.values[entry.columnIds.indexOf(c.id)] ?? '');
+      const row = table.columns.map(c => c.id === AUDIT_BY ? entry.createdByName : c.id === AUDIT_ON ? String(entry.createdAt?.toDate?.().toISOString() || entry.createdOn || '').slice(0,10) : entry.booleanValues?.[c.id] ?? entry.values[entry.columnIds.indexOf(c.id)] ?? '');
+      const previous=table.rowMeta.findIndex(m=>m?.entry&&m.id===entry.id&&m.tableId===b.id);
+      if(previous>=0){table.rows[previous]=row;continue;}
       table.rows.push(row);
       table.rowMeta.push({ id: entry.id, tableId:b.id, entry: true, uid: entry.createdByUid, name: entry.createdByName, createdAt: entry.createdAt?.toDate?.().toISOString() || entry.createdOn });
     }
@@ -92,7 +94,7 @@ export function projectImport(text) {
     if(b.type==='report'&&(!b.report||typeof b.report!=='object'))throw Error('The project contains an invalid report.');
     if(b.type==='image'&&(!b.image||typeof b.image.src!=='string'))throw Error('The project contains an invalid image.');
     delete b.csv;
-    if (b.table) { delete b.table.rowMeta; b.table.teamAdd = false; b.table.teamDeleteOwn = false; }
+    if (b.table) { delete b.table.rowMeta; delete b.table.entityKey; delete b.table.entityRevision; b.table.teamAdd = false; b.table.teamDeleteOwn = false; }
   }
   if (!board.views.length || board.views.some(v => !v || typeof v.id !== 'string' || typeof v.name !== 'string') || new Set(board.views.map(v=>v.id)).size!==board.views.length) throw Error('The project needs valid views.');
   if(board.edges.some(e=>!e||typeof e.id!=='string'||!ids.has(e.from)||!ids.has(e.to)))throw Error('The project contains invalid connections.');

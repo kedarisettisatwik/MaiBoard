@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
-import { Icon, IconButton, typeIcons } from "./ui";
+import {downloadTableCSV} from "./entities";
+import { Icon, IconButton, Modal, typeIcons } from "./ui";
 import RichText, { SafeHTML } from "./RichText";
 import Report from "./Report";
 import {CellInput} from "./TableControls";
@@ -36,9 +37,9 @@ export function edgePath(edge, blocks) {
     ? `M${x1},${y1} L${x2},${y2}`
     : `M${x1},${y1} C${x1 + d},${y1} ${x2 - d},${y2} ${x2},${y2}`;
 }
-function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow, editData=false, visibleRows }) {
+export function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow, onToggleBoolean, canToggleBoolean, editData=false, visibleRows }) {
   const { columns, rows } = block.table;
-  const [page,setPage]=useState(1),matching=visibleRows||rows.map((row,index)=>({row,index})),pageData=paginateRows(matching,page,block.table.pageSize,block.table.pagination!==false),rowKey=matching.map(x=>x.index).join(',');
+  const [clearing,setClearing]=useState(false),[page,setPage]=useState(1),matching=visibleRows||rows.map((row,index)=>({row,index})),pageData=paginateRows(matching,page,block.table.pageSize,block.table.pagination!==false),rowKey=matching.map(x=>x.index).join(',');
   useEffect(()=>setPage(1),[rowKey,block.table.pageSize,block.table.pagination]);
   const paginationAtTop=(block.table.paginationPosition||'bottom-right').startsWith('top-');
   const pagination=block.table.pagination!==false&&<nav className="table-pagination" data-position={block.table.paginationPosition||'bottom-right'} aria-label={`Pages for ${block.name}`}><button aria-label="Previous table page" disabled={pageData.page===1} onClick={()=>setPage(pageData.page-1)}>Previous</button>{Array.from({length:Math.min(5,pageData.pages)},(_,i)=>Math.max(1,Math.min(pageData.page-2,pageData.pages-4))+i).map(p=><button key={p} aria-label={`Table page ${p}`} aria-current={p===pageData.page?'page':undefined} onClick={()=>setPage(p)}>{p}</button>)}<span>Page {pageData.page} of {pageData.pages}</span><button aria-label="Next table page" disabled={pageData.page===pageData.pages} onClick={()=>setPage(pageData.page+1)}>Next</button></nav>;
@@ -85,7 +86,7 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow
                 {columns.map((c, j) => c.hidden?null:(
                   <td key={c.id} style={{color:c.colors?.[r[j]]||undefined}}>
                     {(readOnly&&!editData)||c.system ? (
-                      <span>{r[j]}</span>
+                      c.type==='boolean'?<input className="boolean-cell" type="checkbox" aria-label={`Row ${i+1}, ${c.name}`} checked={r[j]===true||String(r[j])==='true'} disabled={!canToggleBoolean?.(block,i)} onChange={e=>onToggleBoolean?.(block,i,c.id,e.target.checked)}/>:<span>{r[j]}</span>
                     ) : (
                       <CellInput column={c} label={`Row ${i+1}, ${c.name}`} value={r[j]??''} onChange={value=>update({table:{...block.table,rows:rows.map((row,k)=>k===i?row.map((v,ix)=>ix===j?value:v):row)}},`cell-${i}-${j}`)}/>
                     )}
@@ -120,10 +121,13 @@ function TableBlock({ block, readOnly, update, onImport, onAddLiveRow, canAddRow
           <p className="table-empty">No rows yet. Add a row or import a CSV.</p>
         )}
       </div>
+      {clearing&&<Modal title="Clear whole table?" onClose={()=>setClearing(false)}><p>Whole table data will be deleted. All records will be removed; fields will remain. Click Save to apply the change.</p><div className="modal-actions"><button className="btn" onClick={()=>setClearing(false)}>Cancel</button><button className="btn danger filled" onClick={()=>{update({table:{...block.table,rows:[],rowMeta:[]}},"clear-table");setClearing(false);}}>Delete all table data</button></div></Modal>}
       <div className="table-footer">
         <span>
           {visibleRows?.length??rows.length} of {rows.length} rows · {columns.length} columns
         </span>
+        <button title="Download CSV" aria-label="Download CSV" onClick={()=>downloadTableCSV(block)}><Icon name="Download" size={13}/> CSV</button>
+        {(!readOnly||editData)&&<button className="danger" onClick={()=>setClearing(true)}><Icon name="Trash2" size={13}/> Clear data</button>}
         {readOnly && onAddLiveRow && (!canAddRow||canAddRow(block)) && <button onClick={()=>onAddLiveRow(block.id)}><Icon name="Plus" size={13}/> Add row</button>}
         {!readOnly && (
           <>
@@ -214,7 +218,7 @@ export default function BoardStage({
   onEditor,
   onImport,
   onAddLiveRow,
-  canAddRow, canDeleteRow, onDeleteLiveRow,
+  canAddRow, canDeleteRow, onDeleteLiveRow, onToggleBoolean, canToggleBoolean,
   editTableData=false, onTableDataChange,
   onDuplicate,
   onTransfer,
@@ -589,7 +593,7 @@ export default function BoardStage({
                     editData={editTableData}
                     onImport={onImport}
                     onAddLiveRow={onAddLiveRow}
-                    canAddRow={canAddRow} canDeleteRow={canDeleteRow} onDeleteLiveRow={onDeleteLiveRow}
+                    canAddRow={canAddRow} canDeleteRow={canDeleteRow} onDeleteLiveRow={onDeleteLiveRow} onToggleBoolean={onToggleBoolean} canToggleBoolean={canToggleBoolean}
                     visibleRows={filterTableByBlocks(block,board.blocks,filters)}
                   />
                 ) : block.type === "filter" ? (
@@ -678,7 +682,7 @@ export default function BoardStage({
                           onConnect,
                           onEditor,
                           onImport,
-                          onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow, editTableData, onTableDataChange,
+                          onAddLiveRow, canAddRow, canDeleteRow, onDeleteLiveRow, onToggleBoolean, canToggleBoolean, editTableData, onTableDataChange,
                           onUploadImage,
                           onAddToTab,
                           onNavigate,
