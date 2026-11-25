@@ -15,3 +15,5 @@
 .modal:has(.entity-field-list){width:900px;max-width:calc(100vw - 32px)}.entity-field-list{max-height:32vh;min-height:100px}
 
 .saved-card-actions{display:flex;gap:4px;flex-shrink:0}.saved-workspace-notice{display:flex;align-items:center;gap:8px;background:#eff6ff;border-bottom:1px solid #dbeafe;color:#1e40af;font-size:12px;padding:10px 20px}.project-card-info:has(.saved-card-actions){flex-wrap:wrap}.project-card-info:has(.saved-card-actions)>button:first-child{flex:1 1 100px}
+
+.entity-card{position:relative}.entity-card>.entity-delete{position:absolute;top:12px;right:12px;color:#dc2626}.entity-card .entity-open{padding-right:32px}.table-source-warning{padding:10px 14px;margin:0;background:#fff7ed;color:#9a3412;font-size:12px;line-height:1.5}

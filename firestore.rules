@@ -89,10 +89,11 @@ service cloud.firestore {
     match /tableEntities/{key} {
       function canEdit() { return owner(resource.data.ownerUid) || (emailAccount() && email() in resource.data.editorEmails); }
       function validEntity(d) { return d.keys().hasOnly(['name','ownerUid','editorEmails','dataJson','revision','createdAt','updatedAt']) && d.name is string && d.name.size() <= 100 && d.ownerUid is string && d.editorEmails is list && d.editorEmails.size() <= 80 && d.dataJson is string && d.dataJson.size() <= 750000 && d.revision is int && d.createdAt is timestamp && d.updatedAt == request.time; }
-      allow read: if canEdit();
+      allow get: if canEdit() || (signedIn() && !exists(/databases/$(database)/documents/tableEntities/$(key)));
+      allow list: if canEdit();
       allow create: if owner(request.resource.data.ownerUid) && validEntity(request.resource.data) && request.resource.data.revision == 1 && request.resource.data.createdAt == request.time;
       allow update: if canEdit() && validEntity(request.resource.data) && request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.revision == resource.data.revision + 1 && (owner(resource.data.ownerUid) || request.resource.data.editorEmails == resource.data.editorEmails);
-      allow delete: if false;
+      allow delete: if owner(resource.data.ownerUid);
     }
     match /publications/{publicationId}/generations/{generation}/recipients/{recipient} {
       function p() { return get(/databases/$(database)/documents/publications/$(publicationId)).data; }

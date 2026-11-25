@@ -6,7 +6,7 @@ export function validateEntity(table){
   for(const row of table.rows){if(row.length!==table.columns.length)throw Error('Records must match the fields.');row.forEach((value,i)=>{const c=table.columns[i],v=String(value??'');if(v.length>10000)throw Error('A field supports at most 10,000 characters.');if(!v)return;if(c.type==='select'&&!(c.options||[]).includes(v))throw Error('Choose an existing picklist option.');if(c.type==='number'&&!Number.isFinite(Number(v)))throw Error('Enter a valid number.');if(c.type==='boolean'&&!['true','false'].includes(v))throw Error('Boolean fields must be true or false.');if(c.type==='date'&&(!/^\d{4}-\d{2}-\d{2}$/.test(v)||new Date(v+'T00:00:00Z').toISOString().slice(0,10)!==v))throw Error('Enter a valid date.');});}
   return {columns:table.columns.map(c=>{const {hidden,...field}=c;return structuredClone(field);}),rows:table.rows.map(r=>r.map(v=>String(v??''))),rowMeta:table.rowMeta||[]};
 }
-export function entityTable(table,entity){const data=JSON.parse(entity.dataJson);return {...table,columns:data.columns.map(c=>({...c,hidden:table.columns?.find(x=>x.id===c.id)?.hidden===true})),rows:data.rows,rowMeta:data.rowMeta||[],entityKey:entity.id,entityRevision:entity.revision};}
+export function entityTable(table,entity){const data=JSON.parse(entity.dataJson),{entityMissingKey,...settings}=table;return {...settings,columns:data.columns.map(c=>({...c,hidden:table.columns?.find(x=>x.id===c.id)?.hidden===true})),rows:data.rows,rowMeta:data.rowMeta||[],entityKey:entity.id,entityRevision:entity.revision};}
 export function stripEntityData(board){const copy=structuredClone(board);for(const b of copy.blocks.filter(b=>b.table?.entityKey)){b.table.rows=[];b.table.rowMeta=[];}return copy;}
 export function sectionEmails(board,block,sharing){
   if(sharing.audience!=='emails')return null;
@@ -19,3 +19,5 @@ export function recipientBoard(board,email,sharing){const copy=structuredClone(b
   copy.blocks=copy.blocks.filter(b=>!denied.has(b.id));copy.edges=copy.edges.filter(e=>!denied.has(e.from)&&!denied.has(e.to));return copy;
 }
 export function downloadTableCSV(block){const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';const text='\ufeff'+[block.table.columns.map(c=>c.name),...block.table.rows].map(r=>r.map(quote).join(',')).join('\r\n');const url=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=(block.name||'Table')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+
+export function missingEntityTable(table,key){const {entityKey,entityRevision,...settings}=table;return {...settings,rows:[],rowMeta:[],entityMissingKey:key};}

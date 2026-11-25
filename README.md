@@ -196,3 +196,6 @@ Saved cards offer two icon actions: Eye opens Published view; Pencil opens Edit 
 
 
 Saved personal workspaces include a Live-mode (Play) icon. Save additions first, then open Live to see the current authorized publication plus personal blocks. Source blocks stay read-only; personal tables support staged record edits/add/delete with an explicit Save icon, persisted only to the user's additions. The Back-to-editor icon reopens the personal workspace with its saved values. Live opens in the same project tab so the old editor does not remain open with stale personal table data. Right-click block actions resolve the context's block explicitly, avoiding the previous out-of-scope variable error.
+
+
+Entity owners can delete an entity using the red trash icon on its Tables card. A confirmation explains that the source entity and stored records are permanently removed, while published snapshots remain unchanged. Designated editors cannot delete an entity. A revision check rejects deletion if the source changed while the confirmation was open. Projects referencing a deleted entity remain openable: the missing source becomes a local table with its saved columns, no source records, and a notice prompting the user to link a replacement or save the local table.
