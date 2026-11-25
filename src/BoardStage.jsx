@@ -250,6 +250,7 @@ export default function BoardStage({
         : !b.tabParentId),
   );
   const [context, setContext] = useState(null);
+  const contextBlock=context?.kind==='edge'?null:board.blocks.find(b=>b.id===context?.id);
   useEffect(() => {
     if (!context) return;
     const close = () => setContext(null);
@@ -590,7 +591,7 @@ export default function BoardStage({
                     block={block}
                     readOnly={readOnly||block.sourceBlock===true}
                     update={editTableData?(patch)=>onTableDataChange?.(block.id,patch.table):update}
-                    editData={editTableData}
+                    editData={editTableData&&!block.sourceBlock}
                     onImport={onImport}
                     onAddLiveRow={onAddLiveRow}
                     canAddRow={canAddRow} canDeleteRow={canDeleteRow} onDeleteLiveRow={onDeleteLiveRow} onToggleBoolean={onToggleBoolean} canToggleBoolean={canToggleBoolean}
@@ -748,7 +749,7 @@ export default function BoardStage({
           {context.kind !== "edge" && (
             <button
               role="menuitem"
-              disabled={block.sourceBlock||viewIsLocked(board, viewId)}
+              disabled={contextBlock?.sourceBlock||viewIsLocked(board, viewId)}
               onClick={() => {
                 onDuplicate?.(context.id);
                 setContext(null);

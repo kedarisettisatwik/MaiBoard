@@ -21,3 +21,5 @@ test('vertical tab navigation width clamps and keeps children inside the remaini
  assert.equal(verticalTabWidth(wide.blocks[0]),350);assert.ok(c.x+c.w<=bounds.x+bounds.w);assert.ok(c.w<=bounds.w);
  assert.equal(verticalTabWidth({...tabs,tabNavWidth:9999}),360);assert.equal(verticalTabWidth({...tabs,tabNavWidth:10}),80);
 });
+
+test('Live mode cannot modify published source tables in a personal workspace',()=>{const table={columns:[{id:'name',name:'Name'}],rows:[['Original']]};const board={blocks:[{id:'base',type:'table',sourceBlock:true,table},{id:'mine',type:'table',table:structuredClone(table)}]};assert.throws(()=>updateLiveTable(board,'base',{...table,rows:[['Changed']]},{uid:'me'}),/read only/);const next=updateLiveTable(board,'mine',{...table,rows:[['My edit']]},{uid:'me'});assert.equal(next.blocks[0].table.rows[0][0],'Original');assert.equal(next.blocks[1].table.rows[0][0],'My edit');});

@@ -651,7 +651,7 @@ export default function Editor({
           <button className="btn" onClick={()=>downloadProject(board)}>Export JSON</button>
           {!personal&&<button className="btn" onClick={()=>setModal({type:'import'})}>Import JSON</button>}
           {!demo&&!personal&&ownerUid===user.uid&&<button className="btn" onClick={()=>setModal({type:'sharing'})}>Sharing</button>}
-          {personal?<><span className="save-status" role="status">{saveState==='saved'?'Saved':saveState==='saving'?'Saving…':'Unsaved changes'}</span><IconButton icon="Eye" title="Published view" onClick={()=>exit(()=>window.open(`${location.origin}${location.pathname}#/view/${id}`,'_blank','noopener,noreferrer'))}/><IconButton icon="Save" title="Save my additions" disabled={!dirty||saveState==='saving'} onClick={persist}/></>:demo ? (
+          {personal?<><span className="save-status" role="status">{saveState==='saved'?'Saved':saveState==='saving'?'Saving…':'Unsaved changes'}</span><IconButton icon="Eye" title="Published view" onClick={()=>window.open(`${location.origin}${location.pathname}#/view/${id}`,'_blank','noopener,noreferrer')}/><IconButton icon="Play" title="Live mode" onClick={()=>{if(dirty){notify('Save your additions before opening Live mode.');return;}location.hash=`/saved-live/${id}`;}}/><IconButton icon="Save" title="Save my additions" disabled={!dirty||saveState==='saving'} onClick={persist}/></>:demo ? (
             <>
               <button
                 className="btn"

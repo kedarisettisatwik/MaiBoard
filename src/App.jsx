@@ -68,6 +68,7 @@ export default function App() {
       notify(readableError(e));
     }
   };
+  const savedLiveId=route.startsWith('/saved-live/')?route.slice(12):null;
   const savedEditId=route.startsWith('/saved-edit/')?route.slice(12):null;
   const liveId = route.startsWith('/live/') ? route.slice(6) : null,
     viewerId = route.startsWith("/view/") ? route.slice(6) : null,
@@ -75,7 +76,7 @@ export default function App() {
   return (
     <>
       <Suspense fallback={<Spinner />}>
-        {savedEditId ? (!authReady?<Spinner/>:user?<Editor key={'saved-'+savedEditId} personal id={savedEditId} ownerUid={user.uid} user={user} notify={notify} onExit={()=>navigate('/')} onLogout={logout}/>:<div className="load-error"><Logo/><h1>Sign in to edit your additions</h1><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : liveId ? (!authReady ? <Spinner/> : user ? <EditorSession key={`${liveId.includes('/')?liveId.split('/')[0]:user.uid}/${liveId.split('/').at(-1)}`} ownerUid={liveId.includes('/')?liveId.split('/')[0]:user.uid} id={liveId.split('/').at(-1)} user={user} onExit={()=>navigate('/')}>{sessionId=><Viewer id={liveId.split('/').at(-1)} ownerUid={liveId.includes('/')?liveId.split('/')[0]:user.uid} sessionId={sessionId} live user={user}/>}</EditorSession> : <div className="load-error"><Logo/><h1>Sign in to open Live mode</h1><p>Owners and invited editors can manage table data.</p><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : viewerId ? (
+        {savedLiveId ? (!authReady?<Spinner/>:user?<Viewer key={'saved-live-'+savedLiveId} personal live id={savedLiveId} user={user}/>:<div className="load-error"><Logo/><h1>Sign in to open your Live view</h1><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : savedEditId ? (!authReady?<Spinner/>:user?<Editor key={'saved-'+savedEditId} personal id={savedEditId} ownerUid={user.uid} user={user} notify={notify} onExit={()=>navigate('/')} onLogout={logout}/>:<div className="load-error"><Logo/><h1>Sign in to edit your additions</h1><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : liveId ? (!authReady ? <Spinner/> : user ? <EditorSession key={`${liveId.includes('/')?liveId.split('/')[0]:user.uid}/${liveId.split('/').at(-1)}`} ownerUid={liveId.includes('/')?liveId.split('/')[0]:user.uid} id={liveId.split('/').at(-1)} user={user} onExit={()=>navigate('/')}>{sessionId=><Viewer id={liveId.split('/').at(-1)} ownerUid={liveId.includes('/')?liveId.split('/')[0]:user.uid} sessionId={sessionId} live user={user}/>}</EditorSession> : <div className="load-error"><Logo/><h1>Sign in to open Live mode</h1><p>Owners and invited editors can manage table data.</p><button className="btn primary" onClick={()=>setAuthMode('signin')}>Sign in</button></div>) : viewerId ? (
           <Viewer id={viewerId} user={user} onSignIn={()=>setAuthMode("signin")} />
         ) : (route === "/demo" || route.startsWith("/sample/")) ? (
           <Editor
@@ -152,7 +153,7 @@ function AuthModal({ mode, setMode, onClose, notify }) {
       } else {
         await signInWithEmailAndPassword(auth, email, password);
         onClose();
-        if (!/\/(project|live|view|saved-edit)\//.test(location.hash)) navigate("/");
+        if (!/\/(project|live|view|saved-edit|saved-live)\//.test(location.hash)) navigate("/");
       }
     } catch (e) {
       setError(readableError(e));

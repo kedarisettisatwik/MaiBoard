@@ -6,6 +6,7 @@ import {validCell} from './tableFeatures.js';
 export function updateLiveTable(board,id,table,user){
   const block=board.blocks.find(b=>b.id===id&&b.type==='table');
   if(!block)throw Error('This table no longer exists.');
+  if(block.sourceBlock)throw Error('Published source tables are read only. Edit your own additions instead.');
   const columns=block.table.columns;
   if(!Array.isArray(table.columns)||table.columns.length!==columns.length||table.columns.some((c,i)=>c.id!==columns[i].id))throw Error('Table columns changed. Reload Live mode.');
   if(!Array.isArray(table.rows)||table.rows.length>5000)throw Error('A table supports up to 5,000 rows.');

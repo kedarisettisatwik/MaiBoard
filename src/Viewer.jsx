@@ -1,14 +1,15 @@
+import {combineSavedBoard,savedAdditions} from './savedWorkspace';
 import {useUnsavedChanges} from './WorkspaceControls';
 import {updateLiveTable} from './liveData';
 import {appendLiveRow} from './model';
 import React, { useEffect, useRef, useState } from "react";
-import { toggleTeamBoolean, getPublication, loadProject, saveProject, bookmarkPublication, addTeamRow, deleteTeamRow } from "./firebase";
+import { loadSavedAdditions,saveSavedAdditions,toggleTeamBoolean, getPublication, loadProject, saveProject, bookmarkPublication, addTeamRow, deleteTeamRow } from "./firebase";
 import { readableError, viewBlocks, projectViews, startingView, upgradeBoard } from "./model";
 import { Logo, Icon, IconButton, Spinner, ErrorMessage, Modal, Field } from "./ui";
 import {CellInput} from "./TableControls";
 import { PresentationTabs } from "./Views";
 import BoardStage, { blockHeight } from "./BoardStage";
-export default function Viewer({ id, live=false, user, onSignIn, ownerUid=user?.uid, sessionId }) {
+export default function Viewer({ id, live=false, personal=false, user, onSignIn, ownerUid=user?.uid, sessionId }) {
   const [board, setBoard] = useState(null),
     [publication,setPublication]=useState(null),[checkboxPending,setCheckboxPending]=useState(new Set()),
     [dirty,setDirty]=useState(false),[saving,setSaving]=useState(false),[leaveAction,setLeaveAction]=useState(null),[bookmarked,setBookmarked]=useState(false),
@@ -19,13 +20,13 @@ export default function Viewer({ id, live=false, user, onSignIn, ownerUid=user?.
     [activeView, setActiveView] = useState(null),
     [runtimeTabs, setRuntimeTabs] = useState({}),
     [rowTarget,setRowTarget]=useState(null),[rowValues,setRowValues]=useState([]),[rowError,setRowError]=useState(''),[savingRow,setSavingRow]=useState(false),
-    stageRef = useRef(), boardRef=useRef(null),revision=useRef(0);
+    stageRef = useRef(), boardRef=useRef(null),personalSource=useRef(null),revision=useRef(0);
   boardRef.current=board;
   useUnsavedChanges(live&&dirty,action=>setLeaveAction(()=>action));
   useEffect(() => {
     let active = true;
     setError("");setBoard(null);
-    (live ? loadProject(ownerUid,id) : getPublication(id))
+    (personal?Promise.all([getPublication(id),loadSavedAdditions(id)]).then(([p,overlay])=>{personalSource.current=upgradeBoard(JSON.parse(p.boardJson));return {...p,boardJson:JSON.stringify(combineSavedBoard(personalSource.current,overlay))};}):live ? loadProject(ownerUid,id) : getPublication(id))
       .then((p) => {
         if (active) {
           setPublication(p);const loaded=upgradeBoard(JSON.parse(p.boardJson));boardRef.current=loaded;setBoard(loaded);setDirty(false);revision.current=0;
@@ -36,12 +37,12 @@ export default function Viewer({ id, live=false, user, onSignIn, ownerUid=user?.
         if (active) setError(e.code==='permission-denied'?'Sign in with an email address that has access. This project may be restricted or no longer shared with you.':readableError(e));
       });
     return () => (active = false);
-  }, [id, retry, live, user?.uid,ownerUid]);
-  const openRow=(blockId)=>{const block=board.blocks.find(b=>b.id===blockId&&b.type==='table');if(!block||(!live&&!(publication?.sharing?.audience==='emails'&&block.table.teamAdd&&user?.email)))return;setRowTarget(structuredClone(block));setRowValues(block.table.columns.map(()=>''));setRowError('');};
+  }, [id, retry, live, personal, user?.uid,ownerUid]);
+  const openRow=(blockId)=>{const block=board.blocks.find(b=>b.id===blockId&&b.type==='table');if(!block||(personal&&block.sourceBlock)||(!live&&!(publication?.sharing?.audience==='emails'&&block.table.teamAdd&&user?.email)))return;setRowTarget(structuredClone(block));setRowValues(block.table.columns.map(()=>''));setRowError('');};
   const saveRow=async(e)=>{e.preventDefault();setSavingRow(true);setRowError('');try{if(live){const current=boardRef.current, appended=appendLiveRow(current,rowTarget.id,rowValues,rowTarget.table.columns.map(c=>c.id)), target=appended.blocks.find(b=>b.id===rowTarget.id);changeTable(rowTarget.id,target.table);}else{await addTeamRow(id,rowTarget,rowValues);setRetry(x=>x+1);}setRowTarget(null);}catch(e){setRowError(readableError(e));}finally{setSavingRow(false);}};
   useEffect(()=>{if(live||!board||!user||user.isAnonymous||sessionStorage.getItem('maiboard-save-publication')!==id)return;sessionStorage.removeItem('maiboard-save-publication');bookmarkPublication(id,board.name).then(()=>setBookmarked(true)).catch(e=>setRowError(e.message));},[id,board,user?.uid,live]);
   const changeTable=(blockId,table)=>{try{const next=updateLiveTable(boardRef.current,blockId,table,user);boardRef.current=next;setBoard(next);revision.current++;setDirty(true);setRowError('');}catch(e){setRowError(e.message);}};
-  const save=async()=>{if(!live||!dirty||saving)return false;const snapshot=structuredClone(boardRef.current),at=revision.current;setSaving(true);setRowError('');try{await saveProject(ownerUid,id,snapshot,sessionId);if(at===revision.current)setDirty(false);return at===revision.current;}catch(e){setRowError(readableError(e));return false;}finally{setSaving(false);}};
+  const save=async()=>{if(!live||!dirty||saving)return false;const snapshot=structuredClone(boardRef.current),at=revision.current;setSaving(true);setRowError('');try{await (personal?saveSavedAdditions(id,savedAdditions(personalSource.current,snapshot)):saveProject(ownerUid,id,snapshot,sessionId));if(at===revision.current)setDirty(false);return at===revision.current;}catch(e){setRowError(readableError(e));return false;}finally{setSaving(false);}};
   const currentView = activeView || (board ? startingView(board) : "view-1");
   const fit = () => {
     if (!board) return;
@@ -86,10 +87,10 @@ export default function Viewer({ id, live=false, user, onSignIn, ownerUid=user?.
         <span className="nav-divider" />
         <strong>{board?.name || "Presentation"}</strong>
         <span className="viewer-readonly">
-          <Icon name={live?'Lock':'Eye'} size={15} /> {live?'Live mode · edit table data':publication?.sharing?.audience==='emails'&&board?.blocks.some(b=>b.type==='table'&&b.table.teamAdd)?'Published · team inputs':'Published · read only'}
+          <Icon name={live?'Lock':'Eye'} size={15} /> {personal?'Live mode · my additions':live?'Live mode · edit table data':publication?.sharing?.audience==='emails'&&board?.blocks.some(b=>b.type==='table'&&b.table.teamAdd)?'Published · team inputs':'Published · read only'}
         </span>
         {!live&&<button className="btn" onClick={async()=>{if(!user||user.isAnonymous){sessionStorage.setItem('maiboard-save-publication',id);onSignIn?.();return;}try{await bookmarkPublication(id,board.name);setBookmarked(true);}catch(e){setRowError(e.message);}}} disabled={!board||bookmarked}>{bookmarked?'Saved':'Save project'}</button>}
-        {live&&<div className="live-save-controls"><span className="live-unsaved">{dirty?'Unsaved changes':'Saved'}</span><button className="btn primary" disabled={!dirty||saving} onClick={save}>{saving?'Saving…':'Save'}</button><button className="btn" onClick={()=>location.hash=`/project/${ownerUid}/${id}`}>Back to editor</button></div>}
+        {live&&<div className="live-save-controls"><span className="live-unsaved">{dirty?'Unsaved changes':'Saved'}</span><IconButton icon="Save" title={saving?'Saving…':'Save table changes'} disabled={!dirty||saving} onClick={save}/><IconButton icon="Pencil" title="Back to editor" onClick={()=>location.hash=personal?`/saved-edit/${id}`:`/project/${ownerUid}/${id}`}/></div>}
       </nav>
       {rowError&&!rowTarget&&<ErrorMessage>{rowError}</ErrorMessage>}
       {board && !error && (
@@ -125,7 +126,7 @@ export default function Viewer({ id, live=false, user, onSignIn, ownerUid=user?.
           editTableData={live}
           onTableDataChange={changeTable}
           onAddLiveRow={live?openRow:publication?.sharing?.audience==='emails'&&user?.email?openRow:undefined}
-          canAddRow={block=>live||block.table.teamAdd===true}
+          canAddRow={block=>personal?!block.sourceBlock:live||block.table.teamAdd===true}
           canDeleteRow={(block,index)=>!live&&block.table.teamDeleteOwn===true&&block.table.rowMeta?.[index]?.entry&&block.table.rowMeta[index].uid===user?.uid}
           canToggleBoolean={(block,index)=>!live&&!!user&&publication?.sharing?.audience==='emails'&&block.table.rowMeta?.[index]?.entry===true&&block.table.rowMeta[index].uid===user.uid&&!checkboxPending.has(block.table.rowMeta[index].id)}
           onToggleBoolean={async(block,index,columnId,checked)=>{const key=block.table.rowMeta[index].id,column=block.table.columns.findIndex(c=>c.id===columnId),previous=block.table.rows[index][column];const patch=value=>setBoard(current=>({...current,blocks:current.blocks.map(b=>b.id===block.id?{...b,table:{...b.table,rows:b.table.rows.map((r,i)=>i===index?r.map((v,j)=>j===column?value:v):r)}}:b)}));setCheckboxPending(keys=>new Set([...keys,key]));patch(String(checked));setRowError('');try{await toggleTeamBoolean(id,block,index,columnId,checked);}catch(e){patch(previous);setRowError(readableError(e));}finally{setCheckboxPending(keys=>{const next=new Set(keys);next.delete(key);return next;});}}}
@@ -135,7 +136,7 @@ export default function Viewer({ id, live=false, user, onSignIn, ownerUid=user?.
           <div className="viewer-caption canvas-overlay">
             <Icon name="Lock" size={13} />
             <span>
-              {live?'Private working project':'Published snapshot'}
+              {personal?'My saved additions':live?'Private working project':'Published snapshot'}
               {publishedAt ? ` · ${publishedAt.toLocaleDateString()}` : ""}
             </span>
           </div>
