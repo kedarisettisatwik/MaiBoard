@@ -162,6 +162,7 @@ function AuthModal({ mode, setMode, onClose, notify }) {
   };
   return (
     <Modal
+      closeOnBackdrop={false}
       title={
         mode === "signup"
           ? "Make room for your ideas."

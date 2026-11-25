@@ -189,7 +189,7 @@ export function IconButton({
     </button>
   );
 }
-export function Modal({ title, onClose, children, wide = false }) {
+export function Modal({ title, onClose, children, wide = false, closeOnBackdrop = true }) {
   const ref = useRef();
   useEffect(() => {
     ref.current.showModal();
@@ -204,7 +204,7 @@ export function Modal({ title, onClose, children, wide = false }) {
         onClose();
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (closeOnBackdrop && e.target === e.currentTarget) onClose();
       }}
     >
       <div className="modal-header">
