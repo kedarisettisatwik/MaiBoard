@@ -10,7 +10,7 @@ import { PresentationTabs } from "./Views";
 import BoardStage, { blockHeight } from "./BoardStage";
 export default function Viewer({ id, live=false, user, onSignIn, ownerUid=user?.uid, sessionId }) {
   const [board, setBoard] = useState(null),
-    [publication,setPublication]=useState(null),
+    [publication,setPublication]=useState(null),[checkboxPending,setCheckboxPending]=useState(new Set()),
     [dirty,setDirty]=useState(false),[saving,setSaving]=useState(false),[leaveAction,setLeaveAction]=useState(null),[bookmarked,setBookmarked]=useState(false),
     [error, setError] = useState(""),
     [view, setView] = useState({ x: 0, y: 0, z: 1 }),
@@ -127,8 +127,8 @@ export default function Viewer({ id, live=false, user, onSignIn, ownerUid=user?.
           onAddLiveRow={live?openRow:publication?.sharing?.audience==='emails'&&user?.email?openRow:undefined}
           canAddRow={block=>live||block.table.teamAdd===true}
           canDeleteRow={(block,index)=>!live&&block.table.teamDeleteOwn===true&&block.table.rowMeta?.[index]?.entry&&block.table.rowMeta[index].uid===user?.uid}
-          canToggleBoolean={(block,index)=>!live&&!!user&&publication?.sharing?.audience==='emails'&&block.table.rowMeta?.[index]?.entry===true&&block.table.rowMeta[index].uid===user.uid}
-          onToggleBoolean={async(block,index,columnId,checked)=>{try{await toggleTeamBoolean(id,block,index,columnId,checked);setRetry(x=>x+1);}catch(e){setRowError(readableError(e));}}}
+          canToggleBoolean={(block,index)=>!live&&!!user&&publication?.sharing?.audience==='emails'&&block.table.rowMeta?.[index]?.entry===true&&block.table.rowMeta[index].uid===user.uid&&!checkboxPending.has(block.table.rowMeta[index].id)}
+          onToggleBoolean={async(block,index,columnId,checked)=>{const key=block.table.rowMeta[index].id,column=block.table.columns.findIndex(c=>c.id===columnId),previous=block.table.rows[index][column];const patch=value=>setBoard(current=>({...current,blocks:current.blocks.map(b=>b.id===block.id?{...b,table:{...b.table,rows:b.table.rows.map((r,i)=>i===index?r.map((v,j)=>j===column?value:v):r)}}:b)}));setCheckboxPending(keys=>new Set([...keys,key]));patch(String(checked));setRowError('');try{await toggleTeamBoolean(id,block,index,columnId,checked);}catch(e){patch(previous);setRowError(readableError(e));}finally{setCheckboxPending(keys=>{const next=new Set(keys);next.delete(key);return next;});}}}
           onDeleteLiveRow={async(block,index)=>{try{await deleteTeamRow(id,block.table.rowMeta[index].id);setRetry(x=>x+1);}catch(e){setRowError(e.message);}}}
           stageRef={stageRef}
         >
